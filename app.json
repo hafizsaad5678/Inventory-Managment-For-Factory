@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Inventory-app",
+    "name": "Stock Management App",
     "slug": "Inventory-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,14 +12,13 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.hmzahmza.Inventoryapp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      }
     },
     "web": {
       "output": "static",
@@ -38,11 +37,19 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-sqlite",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0336785d-21a8-4a99-8db0-a53fe0d52967"
+      }
     }
   }
 }

@@ -1,7 +1,14 @@
-import { create } from 'zustand';
-import { Product, StockMovement, Customer, Invoice, InvoiceItem, Settings } from '../types';
-import db from '../database/db';
-import { convertQuantity } from '../utils/conversions';
+import { create } from "zustand";
+import db from "../database/db";
+import {
+  Customer,
+  Invoice,
+  InvoiceItem,
+  Product,
+  Settings,
+  StockMovement,
+} from "../types";
+import { convertQuantity } from "../utils/conversions";
 
 interface AppState {
   products: Product[];
@@ -13,23 +20,46 @@ interface AppState {
 
   initApp: () => Promise<void>;
   refreshData: () => Promise<void>;
-  
+
   // Products
-  addProduct: (product: Omit<Product, 'createdDate' | 'updatedAt' | 'isActive' | 'currentStock'> & { initialStock?: number }) => Promise<string>;
+  addProduct: (
+    product: Omit<
+      Product,
+      "createdDate" | "updatedAt" | "isActive" | "currentStock"
+    > & { initialStock?: number },
+  ) => Promise<string>;
   updateProduct: (product: Product) => Promise<void>;
   deleteProduct: (code: string) => Promise<void>;
-  
+
   // Purchases & Movements
-  addPurchase: (productCode: string, qty: number, buyingPrice: number, supplierName: string, date: string, note?: string) => Promise<void>;
-  addAdjustment: (productCode: string, qty: number, type: 'adjustment' | 'damage', note: string, date: string) => Promise<void>;
-  
+  addPurchase: (
+    productCode: string,
+    qty: number,
+    buyingPrice: number,
+    supplierName: string,
+    date: string,
+    note?: string,
+  ) => Promise<void>;
+  addAdjustment: (
+    productCode: string,
+    qty: number,
+    type: "adjustment" | "damage",
+    note: string,
+    date: string,
+  ) => Promise<void>;
+
   // Invoices & POS
   createInvoice: (
-    invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'date' | 'status'> & { customerName?: string },
-    items: Omit<InvoiceItem, 'id' | 'invoiceId' | 'quantityInBaseUnit' | 'subtotal' | 'buyingPrice'>[]
+    invoiceData: Omit<Invoice, "id" | "invoiceNumber" | "date" | "status"> & {
+      customerName?: string;
+    },
+    items: Omit<
+      InvoiceItem,
+      "id" | "invoiceId" | "quantityInBaseUnit" | "subtotal" | "buyingPrice"
+    >[],
   ) => Promise<Invoice>;
   cancelInvoice: (invoiceId: string) => Promise<void>;
-  
+
   // Settings
   saveSettings: (settings: Settings) => Promise<void>;
   restoreBackup: (jsonString: string) => Promise<boolean>;
@@ -37,15 +67,18 @@ interface AppState {
 
 // Generate code using CATEGORY-SERIAL logic (e.g. CHEM-001)
 const generateProductCode = (category: string, products: Product[]): string => {
-  let cleanCategory = category.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (cleanCategory.length === 0) cleanCategory = 'GEN';
+  let cleanCategory = category
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (cleanCategory.length === 0) cleanCategory = "GEN";
   const prefix = cleanCategory.substring(0, 4);
-  
+
   // Count existing codes starting with prefix
-  const matchingProducts = products.filter(p => p.code.startsWith(prefix));
+  const matchingProducts = products.filter((p) => p.code.startsWith(prefix));
   let maxNum = 0;
-  matchingProducts.forEach(p => {
-    const parts = p.code.split('-');
+  matchingProducts.forEach((p) => {
+    const parts = p.code.split("-");
     if (parts.length > 1) {
       const num = parseInt(parts[parts.length - 1], 10);
       if (!isNaN(num) && num > maxNum) {
@@ -53,19 +86,24 @@ const generateProductCode = (category: string, products: Product[]): string => {
       }
     }
   });
-  
+
   const nextNum = maxNum + 1;
-  const serial = String(nextNum).padStart(3, '0');
+  const serial = String(nextNum).padStart(3, "0");
   return `${prefix}-${serial}`;
 };
 
 // Generate Invoice Serial number: INV-YYYYMMDD-XXXX
-const generateInvoiceNumber = (invoices: Invoice[], dateStr: string): string => {
-  const cleanDate = dateStr.substring(0, 10).replace(/-/g, '');
+const generateInvoiceNumber = (
+  invoices: Invoice[],
+  dateStr: string,
+): string => {
+  const cleanDate = dateStr.substring(0, 10).replace(/-/g, "");
   const prefix = `INV-${cleanDate}`;
-  const dayInvoices = invoices.filter(inv => inv.invoiceNumber.startsWith(prefix));
+  const dayInvoices = invoices.filter((inv) =>
+    inv.invoiceNumber.startsWith(prefix),
+  );
   const nextNum = dayInvoices.length + 1;
-  const serial = String(nextNum).padStart(4, '0');
+  const serial = String(nextNum).padStart(4, "0");
   return `${prefix}-${serial}`;
 };
 
@@ -75,10 +113,10 @@ export const useStore = create<AppState>((set, get) => ({
   invoices: [],
   stockMovements: [],
   settings: {
-    factoryName: 'Factory ERP System',
-    currency: 'PKR',
+    factoryName: "Factory ERP System",
+    currency: "PKR",
     taxPercent: 0,
-    receiptFooter: 'Thank you for your business!',
+    receiptFooter: "Thank you for your business!",
     darkMode: false,
   },
   isLoading: true,
@@ -89,7 +127,7 @@ export const useStore = create<AppState>((set, get) => ({
       await db.init();
       await get().refreshData();
     } catch (e) {
-      console.error('Error initializing app state', e);
+      console.error("Error initializing app state", e);
     } finally {
       set({ isLoading: false });
     }
@@ -97,12 +135,16 @@ export const useStore = create<AppState>((set, get) => ({
 
   refreshData: async () => {
     try {
-      const products = await db.getProducts();
-      const customers = await db.getCustomers();
-      const invoices = await db.getInvoices();
-      const stockMovements = await db.getStockMovements();
-      const settings = await db.getSettings();
-      set({ products, customers, invoices, stockMovements, settings });
+      const [allProducts, customers, invoices, stockMovements, settings] =
+        await Promise.all([
+          db.getProducts(),
+          db.getCustomers(),
+          db.getInvoices(),
+          db.getStockMovements(),
+          db.getSettings(),
+        ]);
+      // Store all products (active + archived) — screens filter by isActive themselves
+      set({ products: allProducts, customers, invoices, stockMovements, settings });
     } catch (e) {
       console.error('Error refreshing store data', e);
     }
@@ -110,7 +152,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   addProduct: async (pData) => {
     const { products } = get();
-    const code = pData.code ? pData.code.trim().toUpperCase() : generateProductCode(pData.category, products);
+    const code = pData.code
+      ? pData.code.trim().toUpperCase()
+      : generateProductCode(pData.category, products);
     const now = new Date().toISOString();
 
     const newProduct: Product = {
@@ -138,10 +182,10 @@ export const useStore = create<AppState>((set, get) => ({
       const movement: StockMovement = {
         id: mvId,
         productCode: code,
-        type: 'purchase',
+        type: "purchase",
         quantity: pData.initialStock,
         date: now,
-        note: 'Initial stock entry',
+        note: "Initial stock entry",
       };
       await db.addStockMovement(movement);
     }
@@ -161,18 +205,27 @@ export const useStore = create<AppState>((set, get) => ({
     await get().refreshData();
   },
 
-  addPurchase: async (productCode, qty, purchasePrice, supplierName, date, note) => {
+  addPurchase: async (
+    productCode,
+    qty,
+    purchasePrice,
+    supplierName,
+    date,
+    note,
+  ) => {
     const { products } = get();
-    const product = products.find(p => p.code === productCode);
-    if (!product) throw new Error('Product not found');
+    const product = products.find((p) => p.code === productCode);
+    if (!product) throw new Error("Product not found");
 
     const currentStock = product.currentStock;
     const currentCost = product.buyingPrice;
-    
+
     // Weighted Average Cost Logic:
     let newBuyingCost = purchasePrice;
     if (currentStock > 0) {
-      newBuyingCost = ((currentStock * currentCost) + (qty * purchasePrice)) / (currentStock + qty);
+      newBuyingCost =
+        (currentStock * currentCost + qty * purchasePrice) /
+        (currentStock + qty);
       // round to 2 decimals
       newBuyingCost = Math.round(newBuyingCost * 100) / 100;
     }
@@ -190,7 +243,7 @@ export const useStore = create<AppState>((set, get) => ({
     const movement: StockMovement = {
       id: mvId,
       productCode,
-      type: 'purchase',
+      type: "purchase",
       quantity: qty,
       date,
       note: note || `Purchased from ${supplierName} at ${purchasePrice} / unit`,
@@ -216,31 +269,32 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   createInvoice: async (invoiceData, itemsData) => {
+    // Use get() for fresh state snapshot at call time
     const { products, invoices, customers } = get();
     const now = new Date().toISOString();
-    
+
     const invoiceId = `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const invoiceNumber = generateInvoiceNumber(invoices, now);
 
     const items: InvoiceItem[] = [];
-    
+
     // Process items & deduct stock
-    for (const rawItem of itemsData) {
-      const product = products.find(p => p.code === rawItem.productCode);
+    for (let i = 0; i < itemsData.length; i++) {
+      const rawItem = itemsData[i];
+      const product = products.find((p) => p.code === rawItem.productCode);
       if (!product) throw new Error(`Product ${rawItem.productCode} not found`);
 
-      // Convert quantity to base unit
       const qtyInBaseUnit = convertQuantity(
         rawItem.quantity,
         rawItem.unitSelected,
         product.unitType,
-        product.piecesPerBox
+        product.piecesPerBox,
       );
 
       const subtotal = qtyInBaseUnit * rawItem.sellingPrice;
 
       const item: InvoiceItem = {
-        id: `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        id: `item-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`,
         invoiceId,
         productCode: rawItem.productCode,
         productName: rawItem.productName,
@@ -248,19 +302,19 @@ export const useStore = create<AppState>((set, get) => ({
         unitSelected: rawItem.unitSelected,
         quantityInBaseUnit: qtyInBaseUnit,
         sellingPrice: rawItem.sellingPrice,
-        buyingPrice: product.buyingPrice, // save historic buying cost
+        buyingPrice: product.buyingPrice,
         subtotal: subtotal,
       };
-      
+
       items.push(item);
 
       // Create Sale stock movement (deducts stock)
-      const mvId = `mv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const mvId = `mv-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
       const movement: StockMovement = {
         id: mvId,
         productCode: rawItem.productCode,
         type: 'sale',
-        quantity: -qtyInBaseUnit, // Negative for sale
+        quantity: -qtyInBaseUnit,
         date: now,
         note: `Sold on ${invoiceNumber}`,
       };
@@ -277,7 +331,7 @@ export const useStore = create<AppState>((set, get) => ({
       discountAmount: invoiceData.discountAmount,
       finalTotal: invoiceData.finalTotal,
       paymentType: invoiceData.paymentType,
-      status: 'paid', // default status
+      status: "paid", // default status
     };
 
     await db.addInvoice(newInvoice, items);
@@ -285,14 +339,17 @@ export const useStore = create<AppState>((set, get) => ({
     // Update customer history if phone was supplied
     if (invoiceData.customerPhone) {
       const phone = invoiceData.customerPhone.trim();
-      const existingCustomer = customers.find(c => c.phone === phone);
+      const existingCustomer = customers.find((c) => c.phone === phone);
 
       const updatedCustomer: Customer = {
         phone,
-        name: invoiceData.customerName || (existingCustomer ? existingCustomer.name : 'Regular Customer'),
-        totalPurchases: (existingCustomer ? existingCustomer.totalPurchases : 0) + invoiceData.finalTotal,
-        totalDiscount: (existingCustomer ? existingCustomer.totalDiscount : 0) + invoiceData.discountAmount,
+        // Preserve existing name if no new name is provided
+        name: invoiceData.customerName?.trim() || existingCustomer?.name || 'Walk-in Customer',
+        totalPurchases: (existingCustomer?.totalPurchases ?? 0) + invoiceData.finalTotal,
+        totalDiscount: (existingCustomer?.totalDiscount ?? 0) + invoiceData.discountAmount,
         lastVisit: now,
+        // Mark as regular on second+ visit (existingCustomer exists in DB)
+        isRegular: !!existingCustomer,
       };
       await db.saveCustomer(updatedCustomer);
     }
@@ -303,9 +360,9 @@ export const useStore = create<AppState>((set, get) => ({
 
   cancelInvoice: async (invoiceId) => {
     const { invoices, customers, products } = get();
-    const invoice = invoices.find(inv => inv.id === invoiceId);
-    if (!invoice) throw new Error('Invoice not found');
-    if (invoice.status === 'cancelled') return; // already cancelled
+    const invoice = invoices.find((inv) => inv.id === invoiceId);
+    if (!invoice) throw new Error("Invoice not found");
+    if (invoice.status === "cancelled") return; // already cancelled
 
     const now = new Date().toISOString();
 
@@ -313,13 +370,14 @@ export const useStore = create<AppState>((set, get) => ({
     const items = await db.getInvoiceItems(invoiceId);
 
     // 2. Return items to stock (create opposite movement)
-    for (const item of items) {
-      const mvId = `mv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const mvId = `mv-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
       const movement: StockMovement = {
         id: mvId,
         productCode: item.productCode,
         type: 'return',
-        quantity: item.quantityInBaseUnit, // Positive to return stock
+        quantity: item.quantityInBaseUnit,
         date: now,
         note: `Returned from cancelled invoice ${invoice.invoiceNumber}`,
       };
@@ -329,12 +387,18 @@ export const useStore = create<AppState>((set, get) => ({
     // 3. Reverse customer purchases
     if (invoice.customerPhone) {
       const phone = invoice.customerPhone;
-      const customer = customers.find(c => c.phone === phone);
+      const customer = customers.find((c) => c.phone === phone);
       if (customer) {
         const updatedCustomer: Customer = {
           ...customer,
-          totalPurchases: Math.max(0, customer.totalPurchases - invoice.finalTotal),
-          totalDiscount: Math.max(0, customer.totalDiscount - invoice.discountAmount),
+          totalPurchases: Math.max(
+            0,
+            customer.totalPurchases - invoice.finalTotal,
+          ),
+          totalDiscount: Math.max(
+            0,
+            customer.totalDiscount - invoice.discountAmount,
+          ),
           lastVisit: now,
         };
         await db.saveCustomer(updatedCustomer);
@@ -342,7 +406,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     // 4. Update status in Database
-    await db.updateInvoiceStatus(invoiceId, 'cancelled');
+    await db.updateInvoiceStatus(invoiceId, "cancelled");
 
     await get().refreshData();
   },

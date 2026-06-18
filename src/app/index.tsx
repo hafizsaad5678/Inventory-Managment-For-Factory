@@ -1,55 +1,91 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  ScrollView, 
-  View, 
-  Pressable, 
-  Modal, 
-  TextInput, 
-  Text,
-  Alert, 
-  Platform,
-  Dimensions
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useStore } from '../store/store';
-import { ThemedText } from '../components/themed-text';
-import { ThemedView } from '../components/themed-view';
-import { Colors, Spacing, MaxContentWidth, BottomTabInset } from '../constants/theme';
-import { useTheme } from '../hooks/use-theme';
-import { 
-  SettingsIcon, 
-  WarningIcon, 
-  CloseIcon, 
-  CheckIcon, 
-  PlusIcon,
-  DatabaseIcon,
-  ReportsIcon
-} from '../components/Icons';
+import React, { useEffect, useState } from "react";
+import {
+    ActivityIndicator,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    Text,
+    TextInput,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { GlassCard } from "../components/glass-card";
+import { GradientBg } from "../components/gradient-bg";
+import {
+    CheckIcon,
+    CloseIcon,
+    DatabaseIcon,
+    PlusIcon,
+    ReportsIcon,
+    SettingsIcon,
+    WarningIcon,
+} from "../components/Icons";
+import { MiniCalendar } from "../components/mini-calendar";
+import { ThemedText } from "../components/themed-text";
+import { useStore } from "../store/store";
+import { ConfirmModal, ConfirmModalVariant } from "../components/confirm-modal";
 
-type DateFilter = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+type DateFilter = "daily" | "weekly" | "monthly" | "yearly" | "custom";
+
+// Format Date to YYYY-MM-DD using LOCAL date parts — avoids UTC offset shifting the day
+const toLocalDateStr = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+// Parse a YYYY-MM-DD string as a LOCAL date (not UTC midnight)
+const parseLocalDate = (s: string): Date => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
 
 export default function DashboardScreen() {
   const store = useStore();
-  const theme = useTheme();
-  
-  // Local state
-  const [filterType, setFilterType] = useState<DateFilter>('monthly');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  
-  // Settings Form
-  const [factoryName, setFactoryName] = useState('');
-  const [currency, setCurrency] = useState('');
-  const [taxPercent, setTaxPercent] = useState('0');
-  const [receiptFooter, setReceiptFooter] = useState('');
-  const [backupJson, setBackupJson] = useState('');
+  const initApp = useStore((state) => state.initApp);
 
-  // Init Store
+  // Local state
+  const [filterType, setFilterType] = useState<DateFilter>("monthly");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Date picker state
+  const [startDateObj, setStartDateObj] = useState<Date>(new Date());
+  const [endDateObj, setEndDateObj] = useState<Date>(new Date());
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
+  // Settings Form
+  const [factoryName, setFactoryName] = useState("");
+  const [currency, setCurrency] = useState("");
+  const [taxPercent, setTaxPercent] = useState("0");
+  const [receiptFooter, setReceiptFooter] = useState("");
+  const [backupJson, setBackupJson] = useState("");
+
+  // Modal state for custom ConfirmModal
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalVariant, setModalVariant] = useState<ConfirmModalVariant>("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
+
+  const showModal = (variant: ConfirmModalVariant, title: string, message: string) => {
+    setModalVariant(variant);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalVisible(true);
+  };
+
+  const didInitRef = React.useRef(false);
+
+  // Init Store once on mount
   useEffect(() => {
-    store.initApp();
-  }, []);
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    void initApp();
+  }, [initApp]);
 
   // Update Settings form when settings load
   useEffect(() => {
@@ -64,77 +100,85 @@ export default function DashboardScreen() {
   // Handle Save Settings
   const handleSaveSettings = async () => {
     if (!factoryName.trim()) {
-      alert('Factory Name is required');
+      showModal("warning", "Required Field", "Factory Name is required to save settings.");
       return;
     }
     await store.saveSettings({
       factoryName: factoryName.trim(),
-      currency: currency.trim() || 'PKR',
+      currency: currency.trim() || "PKR",
       taxPercent: parseFloat(taxPercent) || 0,
       receiptFooter: receiptFooter.trim(),
       darkMode: store.settings.darkMode,
     });
     setShowSettingsModal(false);
-    alert('Settings saved successfully');
+    showModal("success", "Settings Saved", "Your factory configurations have been successfully saved.");
   };
 
   // Backup data
   const handleBackup = async () => {
     try {
-      const SQLite = require('../database/db');
+      const SQLite = require("../database/db");
       const backup = await SQLite.db.backupData();
       setBackupJson(backup);
-      alert('Backup JSON generated successfully. Copy it from the text box below.');
+      showModal("success", "Backup Generated", "Backup JSON generated successfully. You can copy it from the recovery text area below.");
     } catch (e) {
       console.error(e);
-      alert('Failed to generate backup');
+      showModal("error", "Backup Failed", "Failed to generate database backup.");
     }
   };
 
   // Restore data
   const handleRestore = async () => {
     if (!backupJson.trim()) {
-      alert('Please paste backup JSON string');
+      showModal("warning", "Input Required", "Please paste backup JSON string to restore.");
       return;
     }
     const success = await store.restoreBackup(backupJson);
     if (success) {
-      alert('Data restored successfully!');
-      setBackupJson('');
+      setBackupJson("");
       setShowSettingsModal(false);
+      showModal("success", "Restored Successfully", "Data restored successfully!");
     } else {
-      alert('Invalid backup JSON or restoration failed.');
+      showModal("error", "Restoration Failed", "Invalid backup JSON or restoration failed.");
     }
   };
 
   // Calculate stats based on date filters
   const getFilteredInvoices = () => {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    return store.invoices.filter(inv => {
+    // Local midnight helpers
+    const localMidnight = (d: Date) =>
+      new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    return store.invoices.filter((inv) => {
+      // Parse stored ISO string and convert to local Date for comparison
       const invDate = new Date(inv.date);
-      
+
       switch (filterType) {
-        case 'daily':
+        case "daily": {
+          const startOfToday = localMidnight(now);
           return invDate >= startOfToday;
-        case 'weekly': {
-          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          return invDate >= sevenDaysAgo;
         }
-        case 'monthly': {
+        case "weekly": {
+          // Start of the day, 6 days ago (so "this week" = last 7 days incl. today)
+          const weekStart = localMidnight(now);
+          weekStart.setDate(weekStart.getDate() - 6);
+          return invDate >= weekStart;
+        }
+        case "monthly": {
           const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
           return invDate >= startOfMonth;
         }
-        case 'yearly': {
+        case "yearly": {
           const startOfYear = new Date(now.getFullYear(), 0, 1);
           return invDate >= startOfYear;
         }
-        case 'custom': {
+        case "custom": {
           if (!customStartDate) return true;
-          const start = new Date(customStartDate);
-          const end = customEndDate ? new Date(customEndDate) : new Date();
-          // Adjust end to include the entire day
+          const start = parseLocalDate(customStartDate);
+          const end = customEndDate
+            ? parseLocalDate(customEndDate)
+            : new Date();
           end.setHours(23, 59, 59, 999);
           return invDate >= start && invDate <= end;
         }
@@ -147,41 +191,31 @@ export default function DashboardScreen() {
   const filteredInvoices = getFilteredInvoices();
 
   // Basic stats
-  const activeInvoices = filteredInvoices.filter(inv => inv.status !== 'cancelled');
+  const activeInvoices = filteredInvoices.filter(
+    (inv) => inv.status !== "cancelled",
+  );
   const grossSales = activeInvoices.reduce((sum, inv) => sum + inv.subtotal, 0);
-  const discountsGiven = activeInvoices.reduce((sum, inv) => sum + inv.discountAmount, 0);
-  const netSales = grossSales - discountsGiven; // Equals sum of finalTotals
+  const discountsGiven = activeInvoices.reduce(
+    (sum, inv) => sum + inv.discountAmount,
+    0,
+  );
+  const netSales = grossSales - discountsGiven;
 
-  // COGS and Profit/Loss
-  // We need to fetch items for filtered invoices. In Zustand store we have all details.
-  // To avoid complex DB queries, we calculate COGS from invoice items.
-  // For web fallback or loaded state, let's calculate the COGS.
-  // Wait, does the store contain loaded invoices but not items?
-  // Since db.getInvoices only returns invoices, let's load all invoice items.
-  // For safety and speed, let's do a simple calculation:
-  // If we don't have items loaded, we can fetch them or calculate from local state.
-  // To resolve this elegantly, we can check if `db` has a method to get all invoice items.
-  // In `db.ts`, we implemented `getInvoiceItems(invoiceId)`.
-  // Let's add a state to track invoice items in the store, or query them.
-  // Wait, in `db.ts`, did we implement a way to get all items or calculate profit?
-  // Let's look at `db.ts`: we saved invoice items in `invoice_items` table.
-  // Can we run a quick load of items on start? Yes, in `store.ts`, we fetched `products`, `customers`, `invoices`, and `stockMovements` on init. We didn't fetch `invoice_items` globally.
-  // But wait! We can calculate profit by querying items, or we can fetch them.
-  // Alternatively, we can calculate profit at checkout and store it directly in the `invoices` table as `cogs` or `netProfit`!
-  // Wow! Storing `cogs` in the `invoices` table makes P&L querying *instantaneous* and *massively efficient*, requiring zero table joins!
-  // Let's check: did we add `cogs` to the `invoices` table? In `db.ts`, it is `subtotal`, `discountAmount`, `finalTotal`, `paymentType`, `status`.
-  // That's okay! We can calculate COGS by loading items.
-  // Let's write a local state in `index.tsx` to load items for the active invoices, or we can compute it if we keep a cache of items.
-  // Actually, let's fetch all invoice items on mount or when invoices change!
-  // Let's write a simple helper inside `index.tsx` to load items for calculations.
   const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
+
+  // Stable IDs string so the effect re-fires whenever the filtered set changes
+  const activeInvoiceIds = activeInvoices.map((i) => i.id).join(",");
 
   useEffect(() => {
     const loadItems = async () => {
       try {
-        const SQLite = require('../database/db');
+        const SQLite = require("../database/db");
         const itemsList: any[] = [];
-        for (const inv of activeInvoices) {
+        // Use the current filtered invoices captured via activeInvoiceIds
+        const currentInvoices = getFilteredInvoices().filter(
+          (inv) => inv.status !== "cancelled",
+        );
+        for (const inv of currentInvoices) {
           const items = await SQLite.db.getInvoiceItems(inv.id);
           itemsList.push(...items);
         }
@@ -195,43 +229,51 @@ export default function DashboardScreen() {
     } else {
       setInvoiceItems([]);
     }
-  }, [store.invoices, filterType, customStartDate, customEndDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeInvoiceIds]);
 
   const cogs = invoiceItems.reduce((sum, item) => {
-    // Check if the item's invoice is active (not cancelled)
-    const inv = activeInvoices.find(i => i.id === item.invoiceId);
+    const inv = activeInvoices.find((i) => i.id === item.invoiceId);
     if (!inv) return sum;
-    return sum + (item.quantityInBaseUnit * item.buyingPrice);
+    return sum + item.quantityInBaseUnit * item.buyingPrice;
   }, 0);
 
   const profit = netSales - cogs;
   const isLoss = profit < 0;
 
   // Inventory value
-  const inventoryValue = store.products.reduce((sum, p) => sum + (p.currentStock * p.buyingPrice), 0);
+  const inventoryValue = store.products.reduce(
+    (sum, p) => sum + p.currentStock * p.buyingPrice,
+    0,
+  );
 
   // Low stock products
-  const lowStockProducts = store.products.filter(p => p.currentStock <= p.minStockAlert);
-  
+  const lowStockProducts = store.products.filter(
+    (p) => p.currentStock <= p.minStockAlert,
+  );
+
   // Dead stock check: Products not sold in the last 30 days
   const getDeadStockProducts = () => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const soldProductCodes = new Set(
       store.stockMovements
-        .filter(m => m.type === 'sale' && new Date(m.date) >= thirtyDaysAgo)
-        .map(m => m.productCode)
+        .filter((m) => m.type === "sale" && new Date(m.date) >= thirtyDaysAgo)
+        .map((m) => m.productCode),
     );
-    
-    return store.products.filter(p => !soldProductCodes.has(p.code));
+
+    return store.products.filter((p) => !soldProductCodes.has(p.code));
   };
-  
+
   const deadStockProducts = getDeadStockProducts();
 
   // Top Selling Products (calculated from invoice items)
   const getTopSellingProducts = () => {
-    const salesMap: Record<string, { name: string; quantity: number; revenue: number }> = {};
-    
-    invoiceItems.forEach(item => {
+    const salesMap: Record<
+      string,
+      { name: string; quantity: number; revenue: number }
+    > = {};
+
+    invoiceItems.forEach((item) => {
       const code = item.productCode;
       if (!salesMap[code]) {
         salesMap[code] = { name: item.productName, quantity: 0, revenue: 0 };
@@ -249,274 +291,1086 @@ export default function DashboardScreen() {
   const topSelling = getTopSellingProducts();
 
   // Render a mini responsive visual bar chart using Views
-  // Calculate sales over the current filter days/months
   const renderMiniChart = () => {
     if (activeInvoices.length === 0) {
       return (
-        <View style={styles.emptyChartContainer}>
-          <ThemedText type="small" themeColor="textSecondary">No sales transactions in this range</ThemedText>
+        <View
+          style={{
+            height: 160,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 13, color: "#A0693A", fontWeight: "600" }}>
+            No sales in this period
+          </Text>
         </View>
       );
     }
 
-    // Group sales by day/month based on filter
     const groups: Record<string, number> = {};
-    activeInvoices.forEach(inv => {
+    activeInvoices.forEach((inv) => {
       const date = new Date(inv.date);
-      let label = '';
-      if (filterType === 'daily' || filterType === 'weekly') {
-        label = date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
-      } else if (filterType === 'monthly') {
-        label = `Wk ${Math.ceil(date.getDate() / 7)}`;
+      let label = "";
+      if (filterType === "daily") {
+        const h = date.getHours();
+        label = `${h}:00`;
+      } else if (filterType === "weekly") {
+        label = date.toLocaleDateString(undefined, {
+          weekday: "short",
+          day: "numeric",
+        });
+      } else if (filterType === "monthly") {
+        label = `Wk${Math.ceil(date.getDate() / 7)}`;
       } else {
-        label = date.toLocaleDateString(undefined, { month: 'short' });
+        label = date.toLocaleDateString(undefined, { month: "short" });
       }
       groups[label] = (groups[label] || 0) + inv.finalTotal;
     });
 
-    const data = Object.entries(groups).map(([label, value]) => ({ label, value }));
-    const maxValue = Math.max(...data.map(d => d.value), 100);
+    const data = Object.entries(groups).map(([label, value]) => ({
+      label,
+      value,
+    }));
+    const maxValue = Math.max(...data.map((d) => d.value), 100);
+    const currency = store.settings.currency;
+
+    // Y-axis ticks: 0, 25%, 50%, 75%, 100%
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map((pct) => ({
+      pct,
+      label: pct === 0 ? "0" : Math.round(maxValue * pct).toLocaleString(),
+    }));
+
+    const CHART_HEIGHT = 180;
+    const Y_AXIS_WIDTH = 44;
 
     return (
-      <View style={styles.chartWrapper}>
-        <View style={styles.chartBars}>
-          {data.map((item, idx) => {
-            const pct = (item.value / maxValue) * 100;
-            return (
-              <View key={idx} style={styles.chartColumn}>
-                <View style={styles.chartBarValueContainer}>
-                  <ThemedText type="code" style={styles.chartBarValue}>
-                    {store.settings.currency} {Math.round(item.value)}
-                  </ThemedText>
-                </View>
-                <View style={[styles.chartBar, { height: `${Math.max(15, pct)}%` }]} />
-                <ThemedText type="small" style={styles.chartBarLabel} themeColor="textSecondary">
+      <View style={{ paddingTop: 8 }}>
+        {/* Total summary row */}
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 14,
+          }}
+        >
+          <View>
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: "700",
+                color: "#A0693A",
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Period Total
+            </Text>
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: "800",
+                color: "#1F150C",
+                marginTop: 2,
+              }}
+            >
+              {currency}{" "}
+              {data.reduce((s, d) => s + d.value, 0).toLocaleString()}
+            </Text>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: "700",
+                color: "#A0693A",
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Peak
+            </Text>
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: "700",
+                color: "#412D15",
+                marginTop: 2,
+              }}
+            >
+              {currency} {Math.round(maxValue).toLocaleString()}
+            </Text>
+          </View>
+        </View>
+
+        {/* Chart area */}
+        <View style={{ flexDirection: "row", height: CHART_HEIGHT }}>
+          {/* Y-axis */}
+          <View
+            style={{
+              width: Y_AXIS_WIDTH,
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              paddingRight: 8,
+              paddingBottom: 20,
+            }}
+          >
+            {[...yTicks].reverse().map((t, i) => (
+              <Text
+                key={i}
+                style={{ fontSize: 8, color: "#A0693A", fontWeight: "600" }}
+              >
+                {t.label}
+              </Text>
+            ))}
+          </View>
+
+          {/* Bars + grid */}
+          <View style={{ flex: 1, position: "relative" }}>
+            {/* Horizontal grid lines */}
+            {yTicks.map((t, i) => (
+              <View
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: `${t.pct * 100}%` as any,
+                  height: 1,
+                  backgroundColor:
+                    i === 0 ? "rgba(65,45,21,0.20)" : "rgba(65,45,21,0.07)",
+                  marginBottom: 20,
+                }}
+              />
+            ))}
+
+            {/* Bars row */}
+            <View
+              style={{
+                flexDirection: "row",
+                height: "100%",
+                alignItems: "flex-end",
+                paddingBottom: 20,
+              }}
+            >
+              {data.map((item, idx) => {
+                const pct = Math.max(4, (item.value / maxValue) * 100);
+                const isMax = item.value === maxValue;
+                return (
+                  <View
+                    key={idx}
+                    style={{
+                      flex: 1,
+                      alignItems: "center",
+                      height: "100%",
+                      justifyContent: "flex-end",
+                      paddingHorizontal: 3,
+                    }}
+                  >
+                    {/* Value label */}
+                    <Text
+                      style={{
+                        fontSize: 8,
+                        fontWeight: "700",
+                        color: isMax ? "#412D15" : "#A0693A",
+                        marginBottom: 4,
+                        textAlign: "center",
+                      }}
+                    >
+                      {Math.round(item.value).toLocaleString()}
+                    </Text>
+                    {/* Bar */}
+                    <View
+                      style={{
+                        width: "100%",
+                        height: `${pct}%`,
+                        backgroundColor: isMax
+                          ? "#412D15"
+                          : "rgba(65,45,21,0.30)",
+                        borderTopLeftRadius: 8,
+                        borderTopRightRadius: 8,
+                        borderBottomLeftRadius: 3,
+                        borderBottomRightRadius: 3,
+                      }}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* X-axis labels */}
+            <View
+              style={{
+                flexDirection: "row",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 18,
+              }}
+            >
+              {data.map((item, idx) => (
+                <Text
+                  key={idx}
+                  style={{
+                    flex: 1,
+                    fontSize: 8,
+                    color: "#A0693A",
+                    fontWeight: "600",
+                    textAlign: "center",
+                  }}
+                  numberOfLines={1}
+                >
                   {item.label}
-                </ThemedText>
-              </View>
-            );
-          })}
+                </Text>
+              ))}
+            </View>
+          </View>
         </View>
       </View>
     );
   };
 
   return (
-    <ThemedView style={styles.main}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <GradientBg>
+      <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
         {/* Header */}
-        <View style={styles.header}>
+        <View className="flex-row justify-between items-center px-6 py-4">
           <View>
-            <ThemedText type="subtitle" style={styles.brandTitle}>
+            <ThemedText
+              type="subtitle"
+              className="text-2xl font-extrabold tracking-tight text-brand-primary"
+            >
               {store.settings.factoryName}
             </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText
+              type="small"
+              themeColor="textMuted"
+              className="font-semibold uppercase tracking-wider text-[11px] mt-0.5"
+            >
               Factory Control Center
             </ThemedText>
           </View>
-          <Pressable 
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+          <Pressable
+            className="w-12 h-12 rounded-full bg-brand-glass border border-brand-glass justify-center items-center shadow-sm active:opacity-70"
             onPress={() => setShowSettingsModal(true)}
           >
-            <SettingsIcon size={24} color={theme.text} />
+            <SettingsIcon size={22} color="#000000" />
           </Pressable>
         </View>
 
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Filters Bar */}
-          <View style={styles.filtersBar}>
-            {(['daily', 'weekly', 'monthly', 'yearly', 'custom'] as DateFilter[]).map((f) => (
-              <Pressable
-                key={f}
-                style={[
-                  styles.filterBtn,
-                  filterType === f && styles.filterBtnActive
-                ]}
-                onPress={() => setFilterType(f)}
-              >
-                <ThemedText 
-                  type="smallBold" 
-                  style={[
-                    styles.filterBtnText,
-                    filterType === f && styles.filterBtnTextActive
-                  ]}
-                  themeColor={filterType === f ? 'background' : 'textSecondary'}
-                >
-                  {f.toUpperCase()}
-                </ThemedText>
-              </Pressable>
-            ))}
+        {store.isLoading ? (
+          <View className="flex-1 justify-center items-center">
+            <ActivityIndicator size="large" color="#412D15" />
           </View>
-
-          {/* Custom Date Inputs */}
-          {filterType === 'custom' && (
-            <View style={styles.customDateContainer}>
-              <View style={styles.dateInputWrapper}>
-                <ThemedText type="smallBold">Start Date (YYYY-MM-DD)</ThemedText>
-                <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                  placeholder="2026-06-01"
-                  placeholderTextColor={theme.textSecondary}
-                  value={customStartDate}
-                  onChangeText={setCustomStartDate}
-                />
-              </View>
-              <View style={styles.dateInputWrapper}>
-                <ThemedText type="smallBold">End Date (YYYY-MM-DD)</ThemedText>
-                <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                  placeholder="2026-06-30"
-                  placeholderTextColor={theme.textSecondary}
-                  value={customEndDate}
-                  onChangeText={setCustomEndDate}
-                />
-              </View>
-            </View>
-          )}
-
-          {/* Core KPI Cards Grid */}
-          <View style={styles.kpiGrid}>
-            <ThemedView type="backgroundElement" style={styles.kpiCard}>
-              <ThemedText type="small" themeColor="textSecondary">Gross Sales</ThemedText>
-              <ThemedText type="subtitle" style={styles.kpiValue}>
-                {store.settings.currency} {grossSales.toLocaleString()}
-              </ThemedText>
-            </ThemedView>
-
-            <ThemedView type="backgroundElement" style={styles.kpiCard}>
-              <ThemedText type="small" themeColor="textSecondary">Discounts Given</ThemedText>
-              <ThemedText type="subtitle" style={[styles.kpiValue, { color: '#e53935' }]}>
-                {store.settings.currency} {discountsGiven.toLocaleString()}
-              </ThemedText>
-            </ThemedView>
-
-            <ThemedView type="backgroundElement" style={styles.kpiCard}>
-              <ThemedText type="small" themeColor="textSecondary">Net Sales (Revenue)</ThemedText>
-              <ThemedText type="subtitle" style={[styles.kpiValue, { color: '#208AEF' }]}>
-                {store.settings.currency} {netSales.toLocaleString()}
-              </ThemedText>
-            </ThemedView>
-
-            <ThemedView 
-              type="backgroundElement" 
-              style={[
-                styles.kpiCard, 
-                { borderLeftWidth: 4, borderLeftColor: isLoss ? '#e53935' : '#4CAF50' }
-              ]}
+        ) : (
+          <ScrollView
+            contentContainerStyle={{
+              paddingHorizontal: 24,
+              paddingBottom: Platform.OS === "ios" ? 120 : 100,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Filters Bar */}
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 6,
+                marginBottom: 16,
+                backgroundColor: "rgba(255,255,255,0.30)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.20)",
+                borderRadius: 999,
+                padding: 6,
+              }}
             >
-              <ThemedText type="small" themeColor="textSecondary">Net Profit / Loss</ThemedText>
-              <ThemedText type="subtitle" style={[styles.kpiValue, { color: isLoss ? '#e53935' : '#4CAF50' }]}>
-                {store.settings.currency} {profit.toLocaleString()}
-              </ThemedText>
-            </ThemedView>
-
-            <ThemedView type="backgroundElement" style={styles.kpiCard}>
-              <ThemedText type="small" themeColor="textSecondary">Inventory Valuation</ThemedText>
-              <ThemedText type="subtitle" style={styles.kpiValue}>
-                {store.settings.currency} {inventoryValue.toLocaleString()}
-              </ThemedText>
-            </ThemedView>
-
-            <ThemedView type="backgroundElement" style={styles.kpiCard}>
-              <ThemedText type="small" themeColor="textSecondary">Active Invoices</ThemedText>
-              <ThemedText type="subtitle" style={styles.kpiValue}>
-                {activeInvoices.length} transactions
-              </ThemedText>
-            </ThemedView>
-          </View>
-
-          {/* Chart Section */}
-          <ThemedView type="backgroundElement" style={styles.chartCard}>
-            <View style={styles.chartHeader}>
-              <ReportsIcon size={20} color="#208AEF" />
-              <ThemedText type="smallBold" style={styles.chartTitle}>Revenue Analytics Graph</ThemedText>
+              {(
+                [
+                  "daily",
+                  "weekly",
+                  "monthly",
+                  "yearly",
+                  "custom",
+                ] as DateFilter[]
+              ).map((f) => {
+                const isActive = filterType === f;
+                return (
+                  <Pressable
+                    key={f}
+                    onPress={() => setFilterType(f)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      alignItems: "center",
+                      borderRadius: 999,
+                      backgroundColor: isActive ? "#412D15" : "transparent",
+                    }}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: "700",
+                        letterSpacing: 0.8,
+                        textTransform: "uppercase",
+                        color: isActive ? "#FAF8F3" : "#666666",
+                      }}
+                    >
+                      {f === "daily"
+                        ? "Day"
+                        : f === "weekly"
+                          ? "Week"
+                          : f === "monthly"
+                            ? "Month"
+                            : f === "yearly"
+                              ? "Year"
+                              : "Custom"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            {renderMiniChart()}
-          </ThemedView>
 
-          {/* Low Stock Alerts */}
-          {lowStockProducts.length > 0 && (
-            <ThemedView type="backgroundElement" style={[styles.alertCard, { borderColor: '#FFA000', borderWidth: 1 }]}>
-              <View style={styles.alertHeader}>
-                <WarningIcon size={24} color="#FFA000" />
-                <ThemedText type="smallBold" style={styles.alertTitle}>
-                  Low Stock Alert ({lowStockProducts.length} Items)
-                </ThemedText>
-              </View>
-              <View style={styles.alertList}>
-                {lowStockProducts.slice(0, 3).map(p => (
-                  <View key={p.code} style={styles.alertRow}>
-                    <ThemedText type="smallBold">{p.name} ({p.code})</ThemedText>
-                    <ThemedText type="small" style={{ color: '#e53935' }}>
-                      Stock: {p.currentStock} {p.unitType} (Min: {p.minStockAlert})
-                    </ThemedText>
-                  </View>
-                ))}
-                {lowStockProducts.length > 3 && (
-                  <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 4 }}>
-                    + {lowStockProducts.length - 3} more items. Check Inventory tab to restock.
-                  </ThemedText>
-                )}
-              </View>
-            </ThemedView>
-          )}
+            {/* Custom Date Inputs */}
+            {filterType === "custom" && (
+              <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+                {/* Start Date */}
+                <Pressable
+                  onPress={() => setShowStartPicker(true)}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.60)",
+                    borderRadius: 20,
+                    padding: 12,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "700",
+                      color: "#8B5A2B",
+                      marginBottom: 4,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Start Date
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      color: customStartDate ? "#1F150C" : "#999",
+                    }}
+                  >
+                    {customStartDate || "Tap to select"}
+                  </Text>
+                </Pressable>
 
-          {/* Dead Stock Check */}
-          {deadStockProducts.length > 0 && (
-            <ThemedView type="backgroundElement" style={styles.deadStockCard}>
-              <ThemedText type="smallBold" style={styles.sectionTitle}>
-                Dead Stock Monitor (&gt;30 days idle)
-              </ThemedText>
-              <View style={styles.deadStockList}>
-                {deadStockProducts.slice(0, 3).map(p => (
-                  <View key={p.code} style={styles.deadStockRow}>
-                    <View>
-                      <ThemedText type="smallBold">{p.name}</ThemedText>
-                      <ThemedText type="code" themeColor="textSecondary">{p.code}</ThemedText>
-                    </View>
-                    <ThemedText type="small">Stock: {p.currentStock} {p.unitType}</ThemedText>
-                  </View>
-                ))}
-                {deadStockProducts.length > 3 && (
-                  <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 8 }}>
-                    + {deadStockProducts.length - 3} other products are currently stagnant.
-                  </ThemedText>
-                )}
-              </View>
-            </ThemedView>
-          )}
-
-          {/* Top Selling Products */}
-          <ThemedView type="backgroundElement" style={styles.topSellingCard}>
-            <ThemedText type="smallBold" style={styles.sectionTitle}>Top Selling Products</ThemedText>
-            {topSelling.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 8 }}>
-                No product sales recorded yet.
-              </ThemedText>
-            ) : (
-              <View style={styles.topSellingList}>
-                {topSelling.map((p, idx) => (
-                  <View key={p.code} style={styles.topSellingRow}>
-                    <View style={styles.topSellingIndex}>
-                      <ThemedText type="smallBold">{idx + 1}</ThemedText>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <ThemedText type="smallBold">{p.name}</ThemedText>
-                      <ThemedText type="code" themeColor="textSecondary">{p.code}</ThemedText>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <ThemedText type="smallBold">{store.settings.currency} {p.revenue.toLocaleString()}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">Qty: {p.quantity}</ThemedText>
-                    </View>
-                  </View>
-                ))}
+                {/* End Date */}
+                <Pressable
+                  onPress={() => setShowEndPicker(true)}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.60)",
+                    borderRadius: 20,
+                    padding: 12,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "700",
+                      color: "#8B5A2B",
+                      marginBottom: 4,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    End Date
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      color: customEndDate ? "#1F150C" : "#999",
+                    }}
+                  >
+                    {customEndDate || "Tap to select"}
+                  </Text>
+                </Pressable>
               </View>
             )}
-          </ThemedView>
-        </ScrollView>
+
+            {/* Start Date Picker - MiniCalendar */}
+            <MiniCalendar
+              visible={showStartPicker}
+              title="Select Start Date"
+              selectedDate={startDateObj}
+              maximumDate={new Date()}
+              onCancel={() => setShowStartPicker(false)}
+              onConfirm={(date) => {
+                setStartDateObj(date);
+                setCustomStartDate(toLocalDateStr(date));
+                setShowStartPicker(false);
+                // Reset end date if it's before new start
+                if (endDateObj < date) {
+                  setEndDateObj(date);
+                  setCustomEndDate(toLocalDateStr(date));
+                }
+              }}
+            />
+
+            {/* End Date Picker - MiniCalendar */}
+            <MiniCalendar
+              visible={showEndPicker}
+              title="Select End Date"
+              selectedDate={endDateObj}
+              minimumDate={startDateObj}
+              maximumDate={new Date()}
+              onCancel={() => setShowEndPicker(false)}
+              onConfirm={(date) => {
+                setEndDateObj(date);
+                setCustomEndDate(toLocalDateStr(date));
+                setShowEndPicker(false);
+              }}
+            />
+
+            {/* Core KPI Cards Grid */}
+            <View className="flex-row flex-wrap gap-4 mb-6">
+              {/* Gross Sales */}
+              <GlassCard
+                variant="card"
+                style={{
+                  borderLeftWidth: 4,
+                  borderLeftColor: "#412D15",
+                  overflow: "hidden",
+                }}
+                className="w-[47%] flex-grow min-h-[105px] justify-between"
+              >
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  className="font-semibold"
+                >
+                  Gross Sales
+                </ThemedText>
+                <ThemedText
+                  type="subtitle"
+                  className="text-brand-primary text-[22px] font-extrabold mt-2"
+                >
+                  {store.settings.currency} {grossSales.toLocaleString()}
+                </ThemedText>
+              </GlassCard>
+
+              {/* Discounts */}
+              <GlassCard
+                variant="card"
+                style={{
+                  borderLeftWidth: 4,
+                  borderLeftColor: "#412D15",
+                  overflow: "hidden",
+                }}
+                className="w-[47%] flex-grow min-h-[105px] justify-between"
+              >
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  className="font-semibold"
+                >
+                  Discounts Given
+                </ThemedText>
+                <ThemedText
+                  type="subtitle"
+                  className="text-brand-warning text-[22px] font-extrabold mt-2"
+                >
+                  {store.settings.currency} {discountsGiven.toLocaleString()}
+                </ThemedText>
+              </GlassCard>
+
+              {/* Net Sales */}
+              <GlassCard
+                variant="card"
+                style={{
+                  borderLeftWidth: 4,
+                  borderLeftColor: "#412D15",
+                  overflow: "hidden",
+                }}
+                className="w-[47%] flex-grow min-h-[105px] justify-between"
+              >
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  className="font-semibold"
+                >
+                  Net Sales (Revenue)
+                </ThemedText>
+                <ThemedText
+                  type="subtitle"
+                  className="text-brand-primary text-[22px] font-extrabold mt-2"
+                >
+                  {store.settings.currency} {netSales.toLocaleString()}
+                </ThemedText>
+              </GlassCard>
+
+              {/* Net Profit / Loss */}
+              <GlassCard
+                variant="card"
+                style={{
+                  borderLeftWidth: 4,
+                  borderLeftColor: isLoss ? "#F4A300" : "#412D15",
+                  overflow: "hidden",
+                }}
+                className="w-[47%] flex-grow min-h-[105px] justify-between"
+              >
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  className="font-semibold"
+                >
+                  Net Profit / Loss
+                </ThemedText>
+                <ThemedText
+                  type="subtitle"
+                  className={`text-[22px] font-extrabold mt-2 ${isLoss ? "text-brand-warning" : "text-brand-primary"}`}
+                >
+                  {store.settings.currency} {profit.toLocaleString()}
+                </ThemedText>
+              </GlassCard>
+
+              {/* Inventory Valuation */}
+              <GlassCard
+                variant="card"
+                style={{
+                  borderLeftWidth: 4,
+                  borderLeftColor: "#412D15",
+                  overflow: "hidden",
+                }}
+                className="w-[47%] flex-grow min-h-[105px] justify-between"
+              >
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  className="font-semibold"
+                >
+                  Inventory Value
+                </ThemedText>
+                <ThemedText
+                  type="subtitle"
+                  className="text-brand-primary text-[22px] font-extrabold mt-2"
+                >
+                  {store.settings.currency} {inventoryValue.toLocaleString()}
+                </ThemedText>
+              </GlassCard>
+
+              {/* Active Invoices */}
+              <GlassCard
+                variant="card"
+                style={{
+                  borderLeftWidth: 4,
+                  borderLeftColor: "#412D15",
+                  overflow: "hidden",
+                }}
+                className="w-[47%] flex-grow min-h-[105px] justify-between"
+              >
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  className="font-semibold"
+                >
+                  Active Invoices
+                </ThemedText>
+                <ThemedText
+                  type="subtitle"
+                  className="text-brand-primary text-[22px] font-extrabold mt-2"
+                >
+                  {activeInvoices.length} orders
+                </ThemedText>
+              </GlassCard>
+            </View>
+
+            {/* Chart Section */}
+            <GlassCard
+              variant="cardStrong"
+              style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+              className="mb-6"
+            >
+              {/* Inner white rounded box — contains header + chart */}
+              <View
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 28,
+                  margin: 8,
+                  padding: 16,
+                  shadowColor: "#412D15",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 8,
+                  elevation: 2,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 16,
+                  }}
+                >
+                  <View
+                    style={{
+                      padding: 8,
+                      backgroundColor: "rgba(65,45,21,0.08)",
+                      borderRadius: 12,
+                    }}
+                  >
+                    <ReportsIcon size={20} color="#412D15" />
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      fontWeight: "700",
+                      color: "#1F150C",
+                    }}
+                  >
+                    Revenue Analytics Graph
+                  </Text>
+                </View>
+                {renderMiniChart()}
+              </View>
+            </GlassCard>
+
+            {/* Low Stock Alerts */}
+            {lowStockProducts.length > 0 && (
+              <View style={{ marginBottom: 24 }}>
+                <View
+                  style={{
+                    backgroundColor: "rgba(244,163,0,0.12)",
+                    borderWidth: 1,
+                    borderColor: "rgba(244,163,0,0.25)",
+                    borderRadius: 32,
+                    padding: 0,
+                  }}
+                >
+                  {/* Header */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: 16,
+                      paddingBottom: 12,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: "rgba(244,163,0,0.15)",
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <WarningIcon size={20} color="#F4A300" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "700",
+                          color: "#B07820",
+                        }}
+                      >
+                        Low Stock Alert
+                      </Text>
+                      <Text
+                        style={{ fontSize: 11, color: "#B07820", marginTop: 1 }}
+                      >
+                        {lowStockProducts.length} items need restocking
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: "rgba(244,163,0,0.2)",
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "700",
+                          color: "#B07820",
+                        }}
+                      >
+                        {lowStockProducts.length}
+                      </Text>
+                    </View>
+                  </View>
+                  {/* Inner white box */}
+                  <View
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: 24,
+                      marginHorizontal: 8,
+                      marginBottom: 8,
+                      padding: 12,
+                      gap: 6,
+                    }}
+                  >
+                    {lowStockProducts.slice(0, 3).map((p) => (
+                      <View
+                        key={p.code}
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          backgroundColor: "rgba(244,163,0,0.05)",
+                          borderRadius: 14,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "700",
+                              color: "#1F150C",
+                            }}
+                          >
+                            {p.name}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: "#A0693A",
+                              marginTop: 1,
+                            }}
+                          >
+                            Code: {p.code}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            backgroundColor: "rgba(214,69,69,0.1)",
+                            borderRadius: 10,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: "700",
+                              color: "#F4A300",
+                            }}
+                          >
+                            {p.currentStock}/{p.minStockAlert} {p.unitType}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                    {lowStockProducts.length > 3 && (
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: "#A0693A",
+                          fontWeight: "600",
+                          paddingHorizontal: 4,
+                          paddingTop: 4,
+                        }}
+                      >
+                        + {lowStockProducts.length - 3} more · Check Inventory
+                        tab
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Dead Stock Check */}
+            {deadStockProducts.length > 0 && (
+              <View style={{ marginBottom: 24 }}>
+                <View
+                  style={{
+                    backgroundColor: "rgba(65,45,21,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(65,45,21,0.15)",
+                    borderRadius: 32,
+                  }}
+                >
+                  {/* Header */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: 16,
+                      paddingBottom: 12,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        backgroundColor: "rgba(65,45,21,0.10)",
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <WarningIcon size={20} color="#412D15" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "700",
+                          color: "#1F150C",
+                        }}
+                      >
+                        Dead Stock Monitor
+                      </Text>
+                      <Text
+                        style={{ fontSize: 11, color: "#A0693A", marginTop: 1 }}
+                      >
+                        No sales in 30+ days
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: "rgba(65,45,21,0.12)",
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "700",
+                          color: "#412D15",
+                        }}
+                      >
+                        {deadStockProducts.length}
+                      </Text>
+                    </View>
+                  </View>
+                  {/* Inner white box */}
+                  <View
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      borderRadius: 24,
+                      marginHorizontal: 8,
+                      marginBottom: 8,
+                      padding: 12,
+                      gap: 6,
+                    }}
+                  >
+                    {deadStockProducts.slice(0, 3).map((p) => (
+                      <View
+                        key={p.code}
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          backgroundColor: "rgba(65,45,21,0.03)",
+                          borderRadius: 14,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "700",
+                              color: "#1F150C",
+                            }}
+                          >
+                            {p.name}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: "#A0693A",
+                              marginTop: 1,
+                            }}
+                          >
+                            Code: {p.code}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            backgroundColor: "rgba(65,45,21,0.08)",
+                            borderRadius: 10,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: "700",
+                              color: "#412D15",
+                            }}
+                          >
+                            {p.currentStock} {p.unitType}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                    {deadStockProducts.length > 3 && (
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: "#A0693A",
+                          fontWeight: "600",
+                          paddingHorizontal: 4,
+                          paddingTop: 4,
+                        }}
+                      >
+                        + {deadStockProducts.length - 3} more stagnant products
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Top Selling Products */}
+            <GlassCard
+              variant="card"
+              style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+              className="mb-6"
+            >
+              <View
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 28,
+                  margin: 8,
+                  padding: 16,
+                  shadowColor: "#412D15",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 8,
+                  elevation: 2,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: "700",
+                    color: "#1F150C",
+                    marginBottom: 12,
+                  }}
+                >
+                  Top Selling Products
+                </Text>
+                {topSelling.length === 0 ? (
+                  <View style={{ padding: 16, alignItems: "center" }}>
+                    <Text style={{ fontSize: 13, color: "#A0693A" }}>
+                      No product sales recorded yet.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8 }}>
+                    {topSelling.map((p, idx) => (
+                      <View
+                        key={p.code}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          backgroundColor:
+                            idx === 0
+                              ? "rgba(65,45,21,0.07)"
+                              : "rgba(65,45,21,0.03)",
+                          borderRadius: 16,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          gap: 12,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 999,
+                            backgroundColor:
+                              idx === 0 ? "#412D15" : "rgba(65,45,21,0.10)",
+                            justifyContent: "center",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "700",
+                              color: idx === 0 ? "#FAF8F3" : "#412D15",
+                            }}
+                          >
+                            {idx + 1}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "700",
+                              color: "#1F150C",
+                            }}
+                          >
+                            {p.name}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: "600",
+                              color: "#A0693A",
+                              marginTop: 1,
+                            }}
+                          >
+                            Code: {p.code}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "700",
+                              color: "#1F150C",
+                            }}
+                          >
+                            {store.settings.currency}{" "}
+                            {p.revenue.toLocaleString()}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: "#A0693A",
+                              marginTop: 1,
+                            }}
+                          >
+                            Qty: {p.quantity}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </GlassCard>
+          </ScrollView>
+        )}
       </SafeAreaView>
 
       {/* Settings & DB Backup Modal */}
@@ -526,427 +1380,324 @@ export default function DashboardScreen() {
         transparent={true}
         onRequestClose={() => setShowSettingsModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <ThemedView type="background" style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText type="subtitle">ERP System Settings</ThemedText>
-              <Pressable 
-                style={({ pressed }) => pressed && styles.pressed}
+        <View className="flex-1 justify-end bg-brand-primary/40">
+          <View className="bg-brand-surface rounded-t-[32px] p-6 max-h-[85%] border-t border-brand-glass shadow-lg">
+            {/* Modal Header */}
+            <View className="flex-row justify-between items-center mb-5">
+              <ThemedText
+                type="subtitle"
+                className="text-brand-primary text-xl font-bold"
+              >
+                ERP System Settings
+              </ThemedText>
+              <Pressable
+                className="w-10 h-10 rounded-full bg-brand-glass border border-brand-glass justify-center items-center active:opacity-75"
                 onPress={() => setShowSettingsModal(false)}
               >
-                <CloseIcon size={24} color={theme.text} />
+                <CloseIcon size={20} color="#000000" />
               </Pressable>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Factory Info */}
-              <View style={styles.modalSection}>
-                <ThemedText type="smallBold" style={styles.modalSectionTitle}>Factory Configuration</ThemedText>
-                
-                <View style={styles.formGroup}>
-                  <ThemedText type="small">Factory / Business Name</ThemedText>
+              <View
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 24,
+                  padding: 16,
+                  marginBottom: 16,
+                  shadowColor: "#412D15",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 8,
+                  elevation: 2,
+                }}
+              >
+                <ThemedText
+                  type="smallBold"
+                  className="text-brand-accent text-sm uppercase tracking-wide mb-3"
+                >
+                  Factory Configuration
+                </ThemedText>
+
+                <View className="mb-4">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Factory Name
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
+                    style={{ backgroundColor: "#F5F1E8" }}
                     value={factoryName}
                     onChangeText={setFactoryName}
                     placeholder="Enter factory name"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor="#999"
                   />
                 </View>
 
-                <View style={styles.formGroup}>
-                  <ThemedText type="small">Currency Code</ThemedText>
+                <View className="mb-4">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Currency Symbol
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
+                    style={{ backgroundColor: "#F5F1E8" }}
                     value={currency}
                     onChangeText={setCurrency}
                     placeholder="PKR, $, EUR, etc."
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor="#999"
                   />
                 </View>
 
-                <View style={styles.formGroup}>
-                  <ThemedText type="small">Tax Percentage (%)</ThemedText>
+                <View className="mb-4">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Tax Percentage (%)
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
+                    style={{ backgroundColor: "#F5F1E8" }}
                     value={taxPercent}
                     onChangeText={setTaxPercent}
                     keyboardType="numeric"
                     placeholder="e.g. 17"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor="#999"
                   />
                 </View>
 
-                <View style={styles.formGroup}>
-                  <ThemedText type="small">Receipt Footer Message</ThemedText>
+                <View className="mb-5">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Receipt Footer Note
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
+                    style={{ backgroundColor: "#F5F1E8" }}
                     value={receiptFooter}
                     onChangeText={setReceiptFooter}
                     placeholder="Thanks for choosing us"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor="#999"
                   />
                 </View>
 
                 <Pressable
-                  style={({ pressed }) => [styles.submitBtn, pressed && styles.pressed]}
+                  className="flex-row h-12 rounded-2xl justify-center items-center gap-2 shadow-sm active:opacity-85"
+                  style={{ backgroundColor: "#412D15" }}
                   onPress={handleSaveSettings}
                 >
-                  <CheckIcon size={20} color="#fff" />
-                  <Text style={styles.submitBtnText}>Save Configurations</Text>
+                  <CheckIcon size={18} color="#FAF8F3" />
+                  <Text className="text-brand-cream font-bold text-sm">
+                    Save Configurations
+                  </Text>
                 </Pressable>
               </View>
 
               {/* Data Backup & Restore */}
-              <View style={[styles.modalSection, { borderTopWidth: 1, borderTopColor: theme.backgroundSelected, paddingTop: Spacing.four }]}>
-                <ThemedText type="smallBold" style={[styles.modalSectionTitle, { color: '#208AEF' }]}>
+              <View
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 24,
+                  padding: 16,
+                  marginBottom: 16,
+                  shadowColor: "#412D15",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 8,
+                  elevation: 2,
+                }}
+              >
+                <ThemedText
+                  type="smallBold"
+                  className="text-brand-accent-sec text-sm uppercase tracking-wide mb-2"
+                >
                   Backup & Disaster Recovery
                 </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={{ marginBottom: Spacing.two }}>
-                  Export your database state to JSON, or restore it. Ideal for offline backup sync.
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  className="mb-3 leading-relaxed"
+                >
+                  Export database state as a JSON string, or restore it. Ideal
+                  for transferring data or offline backups.
                 </ThemedText>
 
                 <TextInput
-                  style={[
-                    styles.textarea, 
-                    { 
-                      color: theme.text, 
-                      borderColor: theme.backgroundSelected,
-                      backgroundColor: theme.backgroundElement 
-                    }
-                  ]}
+                  className="border border-brand-glass rounded-2xl px-4 py-3 text-xs h-28 text-brand-primary font-mono text-left"
+                  style={{
+                    backgroundColor: "#F5F1E8",
+                    textAlignVertical: "top",
+                  }}
                   multiline
                   numberOfLines={4}
                   value={backupJson}
                   onChangeText={setBackupJson}
-                  placeholder="Paste backup JSON here to restore, or click backup below to generate."
-                  placeholderTextColor={theme.textSecondary}
+                  placeholder="Paste backup JSON string here to restore, or click export below to generate one."
+                  placeholderTextColor="#999"
                 />
 
-                <View style={styles.backupActions}>
+                <View className="flex-row gap-4 mt-4">
                   <Pressable
-                    style={({ pressed }) => [styles.backupBtn, pressed && styles.pressed]}
+                    className="flex-1 flex-row bg-brand-accent h-11 rounded-2xl justify-center items-center gap-2 shadow-sm active:opacity-85"
                     onPress={handleBackup}
                   >
-                    <DatabaseIcon size={18} color="#fff" />
-                    <Text style={styles.backupBtnText}>Export Backup</Text>
+                    <DatabaseIcon size={16} color="#FAF8F3" />
+                    <Text className="text-brand-cream font-bold text-[13px]">
+                      Export Backup
+                    </Text>
                   </Pressable>
 
                   <Pressable
-                    style={({ pressed }) => [styles.restoreBtn, pressed && styles.pressed]}
+                    className="flex-1 flex-row bg-brand-accent-sec h-11 rounded-2xl justify-center items-center gap-2 shadow-sm active:opacity-85"
                     onPress={handleRestore}
                   >
-                    <PlusIcon size={18} color="#fff" />
-                    <Text style={styles.backupBtnText}>Restore Data</Text>
+                    <PlusIcon size={16} color="#FAF8F3" />
+                    <Text className="text-brand-cream font-bold text-[13px]">
+                      Restore Data
+                    </Text>
                   </Pressable>
                 </View>
               </View>
             </ScrollView>
-          </ThemedView>
+          </View>
+
+          {/* Confirm/Alert overlay — rendered inside this modal to avoid nested Modal issues on iOS */}
+          {modalVisible && (
+            <Pressable
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(0,0,0,0.45)",
+                justifyContent: "center",
+                alignItems: "center",
+                paddingHorizontal: 32,
+              }}
+              onPress={() => setModalVisible(false)}
+            >
+              <Pressable
+                onPress={(e) => e.stopPropagation()}
+                style={{
+                  backgroundColor: "#FAF8F3",
+                  borderRadius: 28,
+                  paddingTop: 32,
+                  paddingBottom: 24,
+                  paddingHorizontal: 24,
+                  alignItems: "center",
+                  width: "100%",
+                  maxWidth: 360,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 12 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 24,
+                  elevation: 12,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.6)",
+                }}
+              >
+                <View
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 28,
+                    backgroundColor:
+                      modalVariant === "success"
+                        ? "rgba(46,125,50,0.12)"
+                        : modalVariant === "error"
+                          ? "rgba(211,47,47,0.12)"
+                          : modalVariant === "warning"
+                            ? "rgba(244,163,0,0.12)"
+                            : "rgba(65,45,21,0.10)",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  {modalVariant === "success" && <CheckIcon size={28} color="#2E7D32" />}
+                  {modalVariant === "error" && <CloseIcon size={28} color="#D32F2F" />}
+                  {(modalVariant === "warning" || modalVariant === "info") && (
+                    <WarningIcon
+                      size={28}
+                      color={modalVariant === "warning" ? "#F4A300" : "#412D15"}
+                    />
+                  )}
+                </View>
+                <Text
+                  style={{
+                    fontSize: 18,
+                    fontWeight: "800",
+                    color: "#1F150C",
+                    marginTop: 16,
+                    textAlign: "center",
+                  }}
+                >
+                  {modalTitle}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "500",
+                    color: "#666",
+                    marginTop: 8,
+                    textAlign: "center",
+                    lineHeight: 20,
+                  }}
+                >
+                  {modalMessage}
+                </Text>
+                <View
+                  style={{
+                    width: "100%",
+                    height: 1,
+                    backgroundColor: "rgba(65,45,21,0.08)",
+                    marginTop: 20,
+                    marginBottom: 16,
+                  }}
+                />
+                <Pressable
+                  onPress={() => setModalVisible(false)}
+                  style={({ pressed }) => ({
+                    width: "100%",
+                    height: 44,
+                    borderRadius: 14,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    backgroundColor:
+                      modalVariant === "error"
+                        ? "#D32F2F"
+                        : modalVariant === "warning"
+                          ? "#F4A300"
+                          : "#412D15",
+                    opacity: pressed ? 0.8 : 1,
+                  })}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: "#FFFFFF" }}>
+                    OK
+                  </Text>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          )}
         </View>
       </Modal>
-    </ThemedView>
+
+      {/* Root ConfirmModal for when the Settings Modal is closed */}
+      <ConfirmModal
+        visible={modalVisible && !showSettingsModal}
+        onClose={() => setModalVisible(false)}
+        variant={modalVariant}
+        title={modalTitle}
+        message={modalMessage}
+      />
+    </GradientBg>
   );
 }
-
-const styles = StyleSheet.create({
-  main: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-  },
-  brandTitle: {
-    fontWeight: '800',
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.four,
-    paddingBottom: BottomTabInset + Spacing.five,
-  },
-  filtersBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: Spacing.two,
-    gap: Spacing.one,
-  },
-  filterBtn: {
-    flex: 1,
-    paddingVertical: Spacing.two,
-    alignItems: 'center',
-    borderRadius: Spacing.two,
-    backgroundColor: '#F0F0F3',
-  },
-  filterBtnActive: {
-    backgroundColor: '#208AEF',
-  },
-  filterBtnText: {
-    fontSize: 10,
-  },
-  filterBtnTextActive: {
-    color: '#fff',
-  },
-  customDateContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-    marginBottom: Spacing.three,
-  },
-  dateInputWrapper: {
-    flex: 1,
-  },
-  input: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    marginTop: Spacing.one,
-    fontSize: 14,
-  },
-  textarea: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 12,
-    height: 100,
-    textAlignVertical: 'top',
-    marginBottom: Spacing.three,
-  },
-  kpiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.three,
-    marginVertical: Spacing.three,
-  },
-  kpiCard: {
-    width: '47%',
-    flexGrow: 1,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
-    minHeight: 80,
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  kpiValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    marginTop: Spacing.one,
-  },
-  chartCard: {
-    padding: Spacing.four,
-    borderRadius: Spacing.three,
-    marginBottom: Spacing.four,
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  chartTitle: {
-    fontSize: 16,
-  },
-  emptyChartContainer: {
-    height: 150,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chartWrapper: {
-    height: 200,
-    justifyContent: 'flex-end',
-    paddingTop: Spacing.three,
-  },
-  chartBars: {
-    flexDirection: 'row',
-    height: '100%',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  chartColumn: {
-    flex: 1,
-    alignItems: 'center',
-    height: '100%',
-    justifyContent: 'flex-end',
-  },
-  chartBar: {
-    width: 14,
-    backgroundColor: '#208AEF',
-    borderRadius: 7,
-  },
-  chartBarValueContainer: {
-    position: 'absolute',
-    bottom: '100%',
-    marginBottom: 4,
-    backgroundColor: '#333',
-    padding: 2,
-    borderRadius: 4,
-  },
-  chartBarValue: {
-    color: '#fff',
-    fontSize: 8,
-  },
-  chartBarLabel: {
-    fontSize: 10,
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  alertCard: {
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
-    marginBottom: Spacing.four,
-  },
-  alertHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginBottom: Spacing.two,
-  },
-  alertTitle: {
-    color: '#FFA000',
-    fontSize: 15,
-  },
-  alertList: {
-    gap: Spacing.two,
-  },
-  alertRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.one,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    marginBottom: Spacing.three,
-  },
-  deadStockCard: {
-    padding: Spacing.four,
-    borderRadius: Spacing.three,
-    marginBottom: Spacing.four,
-  },
-  deadStockList: {
-    gap: Spacing.two,
-  },
-  deadStockRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F3',
-  },
-  topSellingCard: {
-    padding: Spacing.four,
-    borderRadius: Spacing.three,
-    marginBottom: Spacing.four,
-  },
-  topSellingList: {
-    gap: Spacing.two,
-  },
-  topSellingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F3',
-    gap: Spacing.three,
-  },
-  topSellingIndex: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#F0F0F3',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-    padding: Spacing.four,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.four,
-  },
-  modalSection: {
-    marginBottom: Spacing.four,
-  },
-  modalSectionTitle: {
-    fontSize: 16,
-    marginBottom: Spacing.three,
-  },
-  formGroup: {
-    marginBottom: Spacing.three,
-  },
-  submitBtn: {
-    flexDirection: 'row',
-    backgroundColor: '#4CAF50',
-    height: 48,
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.two,
-  },
-  submitBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  backupActions: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-  },
-  backupBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: '#208AEF',
-    height: 40,
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  backupBtnText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  restoreBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: '#FF9800',
-    height: 40,
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-});

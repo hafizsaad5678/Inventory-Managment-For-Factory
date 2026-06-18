@@ -7,10 +7,9 @@ import {
   TabTriggerSlotProps,
   TabListProps,
 } from 'expo-router/ui';
-import { Pressable, useColorScheme, View, StyleSheet } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
-import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { 
   DashboardIcon, 
   InventoryIcon, 
@@ -32,7 +31,7 @@ export default function AppTabs() {
             <TabButton icon={<InventoryIcon size={16} />}>Inventory</TabButton>
           </TabTrigger>
           <TabTrigger name="billing" href="/billing" asChild>
-            <TabButton icon={<POSIcon size={16} color="#fff" />} isPOS>POS Billing</TabButton>
+            <TabButton icon={<POSIcon size={16} color="#FAF8F3" />} isPOS>POS Billing</TabButton>
           </TabTrigger>
           <TabTrigger name="customers" href="/customers" asChild>
             <TabButton icon={<CustomersIcon size={16} />}>Customers</TabButton>
@@ -52,112 +51,55 @@ interface TabButtonProps extends TabTriggerSlotProps {
 }
 
 export function TabButton({ children, isFocused, icon, isPOS, ...props }: TabButtonProps) {
-  const scheme = useColorScheme();
-  const themeColors = Colors[scheme === 'unspecified' ? 'light' : scheme];
+  // Accent colors
+  const activeIconColor = '#412D15';
+  const inactiveIconColor = '#666666';
+
+  let btnClass = 'flex flex-row items-center gap-2 py-2.5 px-4 rounded-xl ';
+  if (isPOS) {
+    btnClass += isFocused 
+      ? 'bg-brand-accent-sec border border-brand-accent' 
+      : 'bg-brand-accent border border-brand-accent-sec shadow-sm';
+  } else {
+    btnClass += isFocused 
+      ? 'bg-brand-accent/10 border border-brand-accent/20' 
+      : 'bg-transparent border border-transparent';
+  }
 
   return (
-    <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
-      <ThemedView
-        type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={[
-          styles.tabButtonView,
-          isPOS && [styles.posButtonWeb, { backgroundColor: isFocused ? '#1e7cd8' : '#208AEF' }]
-        ]}>
+    <Pressable {...props} className="active:opacity-80">
+      <View className={btnClass}>
         {icon && (
-          <View style={styles.iconContainer}>
+          <View className="justify-center items-center">
             {React.cloneElement(icon as React.ReactElement<any>, {
-              color: isPOS ? '#fff' : (isFocused ? '#208AEF' : themeColors.textSecondary)
+              color: isPOS ? '#FAF8F3' : (isFocused ? activeIconColor : inactiveIconColor)
             })}
           </View>
         )}
         <ThemedText 
           type="smallBold" 
-          themeColor={isPOS ? 'background' : (isFocused ? 'text' : 'textSecondary')}
-          style={isPOS && { color: '#fff' }}
+          themeColor={isPOS ? 'textInverse' : (isFocused ? 'accent' : 'textSecondary')}
+          className="font-inter font-bold"
         >
           {children}
         </ThemedText>
-      </ThemedView>
+      </View>
     </Pressable>
   );
 }
 
 export function CustomTabList(props: TabListProps) {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
-
   return (
-    <View {...props} style={styles.tabListContainer}>
-      <ThemedView type="backgroundElement" style={styles.innerContainer}>
-        <ThemedText type="subtitle" style={styles.brandText}>
-          Factory <ThemedText type="subtitle" style={{ color: '#208AEF' }}>ERP</ThemedText>
+    <View {...props} className="absolute w-full p-4 flex flex-row justify-center items-center top-0 z-50">
+      <ThemedView type="backgroundElement" className="flex flex-row items-center py-4 px-6 rounded-2xl w-full max-w-[800px] shadow-sm border border-brand-glass">
+        <ThemedText type="subtitle" className="font-inter font-extrabold text-[22px] tracking-tight">
+          Factory <ThemedText type="subtitle" className="text-brand-accent font-extrabold text-[22px] tracking-tight">ERP</ThemedText>
         </ThemedText>
 
-        <View style={styles.tabsGroup}>
+        <View className="flex flex-row items-center gap-2 ml-auto">
           {props.children}
         </View>
       </ThemedView>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  tabListContainer: {
-    position: 'absolute',
-    width: '100%',
-    padding: Spacing.three,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-    top: 0,
-    zIndex: 100,
-  },
-  innerContainer: {
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.five,
-    borderRadius: Spacing.four,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexGrow: 1,
-    gap: Spacing.four,
-    maxWidth: MaxContentWidth,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  brandText: {
-    fontWeight: '800',
-    fontSize: 20,
-  },
-  tabsGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginLeft: 'auto',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  tabButtonView: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    borderRadius: Spacing.three,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  posButtonWeb: {
-    borderRadius: Spacing.three,
-    shadowColor: '#208AEF',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  iconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

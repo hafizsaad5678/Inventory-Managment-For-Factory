@@ -1,80 +1,88 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  ScrollView, 
-  View, 
-  Pressable, 
-  Modal, 
-  TextInput, 
+import React, { useEffect, useState } from "react";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
   Text,
-  Alert, 
-  Platform
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useStore } from '../store/store';
-import { ThemedText } from '../components/themed-text';
-import { ThemedView } from '../components/themed-view';
-import { Colors, Spacing, MaxContentWidth, BottomTabInset } from '../constants/theme';
-import { useTheme } from '../hooks/use-theme';
-import { Product, StockMovement, StockMovementType } from '../types';
-import { 
-  PlusIcon, 
-  SearchIcon, 
-  CloseIcon, 
-  WarningIcon, 
-  EditIcon, 
-  TrashIcon, 
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { GlassCard } from "../components/glass-card";
+import { GradientBg } from "../components/gradient-bg";
+import {
   CheckIcon,
-  DatabaseIcon
-} from '../components/Icons';
+  CloseIcon,
+  DatabaseIcon,
+  PlusIcon,
+  SearchIcon,
+  TrashIcon,
+  WarningIcon,
+} from "../components/Icons";
+import { ConfirmModal, ConfirmModalVariant } from "../components/confirm-modal";
+import { ThemedText } from "../components/themed-text";
+import { useStore } from "../store/store";
 
 export default function InventoryScreen() {
   const store = useStore();
-  const theme = useTheme();
+
+  // Confirm modal state
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalVariant, setModalVariant] = useState<ConfirmModalVariant>('success');
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+
+  const showModal = (variant: ConfirmModalVariant, title: string, message: string) => {
+    setModalVariant(variant);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalVisible(true);
+  };
 
   // Local state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [showActive, setShowActive] = useState(true); // Toggle active vs inactive products
-  
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [showActive, setShowActive] = useState(true);
+
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [productMovements, setProductMovements] = useState<StockMovement[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+  const [productMovements, setProductMovements] = useState<any[]>([]);
 
   // Add Product Form
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('');
-  const [code, setCode] = useState(''); // Category-Serial code (optional manual entry)
-  const [unitType, setUnitType] = useState<'kg' | 'g' | 'liter' | 'ml' | 'dozen' | 'box' | 'piece'>('piece');
-  const [piecesPerBox, setPiecesPerBox] = useState('12');
-  const [buyingPrice, setBuyingPrice] = useState('');
-  const [sellingPrice, setSellingPrice] = useState('');
-  const [minStockAlert, setMinStockAlert] = useState('10');
-  const [initialStock, setInitialStock] = useState('0');
-  const [barcode, setBarcode] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
+  const [code, setCode] = useState("");
+  const [unitType, setUnitType] = useState<
+    "kg" | "g" | "liter" | "ml" | "dozen" | "box" | "piece"
+  >("piece");
+  const [piecesPerBox, setPiecesPerBox] = useState("12");
+  const [buyingPrice, setBuyingPrice] = useState("");
+  const [sellingPrice, setSellingPrice] = useState("");
+  const [minStockAlert, setMinStockAlert] = useState("10");
+  const [initialStock, setInitialStock] = useState("0");
+  const [barcode, setBarcode] = useState("");
+  const [description, setDescription] = useState("");
 
-  // Purchase/Stock-in Form
-  const [supplierName, setSupplierName] = useState('');
-  const [purchaseQty, setPurchaseQty] = useState('');
-  const [purchasePrice, setPurchasePrice] = useState('');
-  const [purchaseNote, setPurchaseNote] = useState('');
+  // Restock Form
+  const [supplierName, setSupplierName] = useState("");
+  const [purchaseQty, setPurchaseQty] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [purchaseNote, setPurchaseNote] = useState("");
 
   // Adjustment Form
-  const [adjustmentQty, setAdjustmentQty] = useState('');
-  const [adjustmentType, setAdjustmentType] = useState<'adjustment' | 'damage'>('adjustment');
-  const [adjustmentNote, setAdjustmentNote] = useState('');
-
-  useEffect(() => {
-    store.refreshData();
-  }, []);
+  const [adjustmentQty, setAdjustmentQty] = useState("");
+  const [adjustmentType, setAdjustmentType] = useState<"adjustment" | "damage">(
+    "adjustment",
+  );
+  const [adjustmentNote, setAdjustmentNote] = useState("");
 
   // Fetch product stock ledger when product changes/opens
   const loadProductLedger = async (productCode: string) => {
     try {
-      const SQLite = require('../database/db');
+      const SQLite = require("../database/db");
       const mvs = await SQLite.db.getStockMovements(productCode);
       setProductMovements(mvs);
     } catch (e) {
@@ -90,8 +98,14 @@ export default function InventoryScreen() {
 
   // Handle Add Product
   const handleAddProduct = async () => {
-    if (!name.trim() || !category.trim() || !buyingPrice || !sellingPrice || !minStockAlert) {
-      alert('Please fill out all required fields');
+    if (
+      !name.trim() ||
+      !category.trim() ||
+      !buyingPrice ||
+      !sellingPrice ||
+      !minStockAlert
+    ) {
+      showModal('warning', 'Missing Fields', 'Please fill out all required fields before saving.');
       return;
     }
 
@@ -111,23 +125,23 @@ export default function InventoryScreen() {
       });
 
       // Clear Form
-      setName('');
-      setCategory('');
-      setCode('');
-      setUnitType('piece');
-      setPiecesPerBox('12');
-      setBuyingPrice('');
-      setSellingPrice('');
-      setMinStockAlert('10');
-      setInitialStock('0');
-      setBarcode('');
-      setDescription('');
-      
+      setName("");
+      setCategory("");
+      setCode("");
+      setUnitType("piece");
+      setPiecesPerBox("12");
+      setBuyingPrice("");
+      setSellingPrice("");
+      setMinStockAlert("10");
+      setInitialStock("0");
+      setBarcode("");
+      setDescription("");
+
       setShowAddModal(false);
-      alert(`Product registered successfully! Code: ${finalCode}`);
+      showModal('success', 'Product Registered', `Product has been saved successfully with code: ${finalCode}`);
     } catch (err) {
       console.error(err);
-      alert('Failed to register product');
+      showModal('error', 'Registration Failed', 'Something went wrong while saving the product. Please try again.');
     }
   };
 
@@ -137,8 +151,14 @@ export default function InventoryScreen() {
     const qtyVal = parseFloat(purchaseQty);
     const priceVal = parseFloat(purchasePrice);
 
-    if (isNaN(qtyVal) || qtyVal <= 0 || isNaN(priceVal) || priceVal <= 0 || !supplierName.trim()) {
-      alert('Please fill supplier name, positive qty and valid purchase price.');
+    if (
+      isNaN(qtyVal) ||
+      qtyVal <= 0 ||
+      isNaN(priceVal) ||
+      priceVal <= 0 ||
+      !supplierName.trim()
+    ) {
+      showModal('warning', 'Invalid Input', 'Please fill supplier name, positive quantity and a valid purchase price.');
       return;
     }
 
@@ -150,23 +170,25 @@ export default function InventoryScreen() {
         priceVal,
         supplierName.trim(),
         date,
-        purchaseNote.trim() || `Restocked from supplier ${supplierName.trim()}`
+        purchaseNote.trim() || `Restocked from supplier ${supplierName.trim()}`,
       );
 
       // Refresh Detail Panel
-      const updated = store.products.find(p => p.code === selectedProduct.code);
+      const updated = store.products.find(
+        (p) => p.code === selectedProduct.code,
+      );
       if (updated) setSelectedProduct(updated);
 
       // Reset Form
-      setPurchaseQty('');
-      setPurchasePrice('');
-      setSupplierName('');
-      setPurchaseNote('');
+      setPurchaseQty("");
+      setPurchasePrice("");
+      setSupplierName("");
+      setPurchaseNote("");
 
-      alert('Restocked successfully (WAC updated)!');
+      showModal('success', 'Restock Complete', 'Stock has been restocked and Weighted Average Cost has been updated.');
     } catch (e) {
       console.error(e);
-      alert('Restock failed');
+      showModal('error', 'Restock Failed', 'Something went wrong during restocking. Please try again.');
     }
   };
 
@@ -176,39 +198,42 @@ export default function InventoryScreen() {
     const qtyVal = parseFloat(adjustmentQty);
 
     if (isNaN(qtyVal) || qtyVal <= 0 || !adjustmentNote.trim()) {
-      alert('Please input positive quantity and audit note.');
+      showModal('warning', 'Invalid Input', 'Please enter a positive quantity and an audit note.');
       return;
     }
 
     try {
       const date = new Date().toISOString();
-      // If damage, we deduct stock, so quantity should be negative
-      const signedQty = adjustmentType === 'damage' ? -qtyVal : qtyVal;
-      
+      const signedQty = adjustmentType === "damage" ? -qtyVal : qtyVal;
+
       await store.addAdjustment(
         selectedProduct.code,
         signedQty,
         adjustmentType,
         adjustmentNote.trim(),
-        date
+        date,
       );
 
-      // Refresh Detail Panel
-      const updated = store.products.find(p => p.code === selectedProduct.code);
+      // Refresh Detail Panel — get fresh state after store update
+      const freshProducts = useStore.getState().products;
+      const updated = freshProducts.find((p) => p.code === selectedProduct.code);
       if (updated) setSelectedProduct(updated);
 
-      setAdjustmentQty('');
-      setAdjustmentNote('');
+      // Refresh the ledger
+      await loadProductLedger(selectedProduct.code);
 
-      alert('Adjustment logged successfully!');
+      setAdjustmentQty("");
+      setAdjustmentNote("");
+
+      showModal('success', 'Adjustment Logged', 'Stock adjustment has been recorded in the ledger.');
     } catch (e) {
       console.error(e);
-      alert('Adjustment failed');
+      showModal('error', 'Adjustment Failed', 'Something went wrong while logging the adjustment. Please try again.');
     }
   };
 
   // Toggle active/inactive product state
-  const handleToggleProductActive = async (p: Product) => {
+  const handleToggleProductActive = async (p: any) => {
     try {
       const updated = {
         ...p,
@@ -216,24 +241,30 @@ export default function InventoryScreen() {
       };
       await store.updateProduct(updated);
       setSelectedProduct(updated);
-      alert(updated.isActive ? 'Product activated!' : 'Product soft-deleted (inactive)');
+      showModal(
+        updated.isActive ? 'success' : 'info',
+        updated.isActive ? 'Product Activated' : 'Product Archived',
+        updated.isActive
+          ? 'This product is now active and visible in your inventory.'
+          : 'This product has been archived and is no longer active.'
+      );
     } catch (e) {
       console.error(e);
+      showModal('error', 'Action Failed', 'Something went wrong. Please try again.');
     }
   };
 
-  // Get categories
-  const categories = ['All', ...new Set(store.products.map(p => p.category))];
+  const categories = ["All", ...new Set(store.products.map((p) => p.category))];
 
-  // Filter products
   const getFilteredProducts = () => {
-    return store.products.filter(p => {
-      const matchesSearch = 
+    return store.products.filter((p) => {
+      const matchesSearch =
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.barcode.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
+
+      const matchesCategory =
+        selectedCategory === "All" || p.category === selectedCategory;
       const matchesActive = p.isActive === showActive;
 
       return matchesSearch && matchesCategory && matchesActive;
@@ -241,134 +272,387 @@ export default function InventoryScreen() {
   };
 
   const filteredProducts = getFilteredProducts();
+  const activeProducts = store.products.filter((product) => product.isActive);
+  const lowStockProducts = store.products.filter(
+    (product) =>
+      product.isActive && product.currentStock <= product.minStockAlert,
+  );
+  const inventoryValue = store.products.reduce(
+    (sum, product) => sum + product.currentStock * product.buyingPrice,
+    0,
+  );
 
   return (
-    <ThemedView style={styles.main}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Top Control Bar */}
-        <View style={styles.topControlBar}>
-          <View style={styles.searchWrapper}>
-            <SearchIcon size={18} color={theme.textSecondary} />
+    <GradientBg>
+      <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
+        <View className="flex-row justify-between items-center px-6 py-4">
+          <View className="flex-row items-center gap-3">
+            <View className="p-3 bg-brand-accent/10 rounded-2xl">
+              <DatabaseIcon size={24} color="#412D15" />
+            </View>
+            <View>
+              <ThemedText
+                type="subtitle"
+                className="text-xl font-extrabold tracking-tight text-brand-primary"
+              >
+                Inventory Control
+              </ThemedText>
+              <ThemedText
+                type="small"
+                themeColor="textMuted"
+                className="font-semibold uppercase tracking-wider text-[10px] mt-0.5"
+              >
+                Stock Management
+              </ThemedText>
+            </View>
+          </View>
+
+          <Pressable
+            className="flex-row bg-brand-accent h-11 rounded-xl px-4 items-center gap-1.5 shadow-sm active:opacity-80"
+            onPress={() => setShowAddModal(true)}
+          >
+            <PlusIcon size={16} color="#FAF8F3" />
+            <Text className="text-brand-cream font-bold text-[12px]">Add</Text>
+          </Pressable>
+        </View>
+
+        {/* KPI Cards Grid */}
+        <View className="flex-row flex-wrap gap-3 px-6 mb-6">
+          <GlassCard
+            variant="card"
+            style={{
+              borderLeftWidth: 4,
+              borderLeftColor: "#412D15",
+              overflow: "hidden",
+            }}
+            className="w-[47%] flex-grow min-h-[90px] justify-between"
+          >
+            <ThemedText
+              type="small"
+              themeColor="textSecondary"
+              className="font-semibold text-[11px]"
+            >
+              Total Products
+            </ThemedText>
+            <ThemedText
+              type="subtitle"
+              className="text-brand-primary text-lg font-extrabold mt-2"
+            >
+              {store.products.length} items
+            </ThemedText>
+          </GlassCard>
+
+          <GlassCard
+            variant="card"
+            style={{
+              borderLeftWidth: 4,
+              borderLeftColor: "#412D15",
+              overflow: "hidden",
+            }}
+            className="w-[47%] flex-grow min-h-[90px] justify-between"
+          >
+            <ThemedText
+              type="small"
+              themeColor="textSecondary"
+              className="font-semibold text-[11px]"
+            >
+              Active Items
+            </ThemedText>
+            <ThemedText
+              type="subtitle"
+              className="text-brand-primary text-lg font-extrabold mt-2"
+            >
+              {activeProducts.length} active
+            </ThemedText>
+          </GlassCard>
+
+          <GlassCard
+            variant="card"
+            style={{
+              borderLeftWidth: 4,
+              borderLeftColor:
+                lowStockProducts.length > 0 ? "#F4A300" : "#412D15",
+              overflow: "hidden",
+            }}
+            className="w-[47%] flex-grow min-h-[90px] justify-between"
+          >
+            <ThemedText
+              type="small"
+              themeColor="textSecondary"
+              className="font-semibold text-[11px]"
+            >
+              Low Stock Alerts
+            </ThemedText>
+            <ThemedText
+              type="subtitle"
+              className={`text-lg font-extrabold mt-2 ${lowStockProducts.length > 0 ? "text-brand-warning" : "text-brand-accent"}`}
+            >
+              {lowStockProducts.length} items
+            </ThemedText>
+          </GlassCard>
+
+          <GlassCard
+            variant="card"
+            style={{
+              borderLeftWidth: 4,
+              borderLeftColor: "#412D15",
+              overflow: "hidden",
+            }}
+            className="w-[47%] flex-grow min-h-[90px] justify-between"
+          >
+            <ThemedText
+              type="small"
+              themeColor="textSecondary"
+              className="font-semibold text-[11px]"
+            >
+              Total Value
+            </ThemedText>
+            <ThemedText
+              type="subtitle"
+              className="text-brand-primary text-lg font-extrabold mt-2"
+            >
+              {store.settings.currency} {inventoryValue.toLocaleString()}
+            </ThemedText>
+          </GlassCard>
+        </View>
+
+        {/* Categories + Search + Toggle */}
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 8,
+            marginHorizontal: 24,
+            marginBottom: 16,
+            backgroundColor: "rgba(255,255,255,0.30)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.20)",
+            borderRadius: 999,
+            padding: 6,
+          }}
+        >
+          <View className="flex-1 flex-row items-center bg-white/40 rounded-full px-3 gap-2">
+            <SearchIcon size={16} color="#666666" />
             <TextInput
-              style={[styles.searchInput, { color: theme.text }]}
-              placeholder="Search by code, name, barcode..."
-              placeholderTextColor={theme.textSecondary}
+              className="flex-1 h-9 text-brand-primary text-xs font-inter"
+              placeholder="Search..."
+              placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
           </View>
-          <Pressable 
-            style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
-            onPress={() => setShowAddModal(true)}
-          >
-            <PlusIcon size={18} color="#fff" />
-            <Text style={styles.addBtnText}>New Product</Text>
-          </Pressable>
-        </View>
 
-        {/* Categories Bar */}
-        <View style={{ maxHeight: 40, marginVertical: Spacing.one }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
-            {categories.map(cat => (
-              <Pressable
-                key={cat}
-                style={[
-                  styles.categoryBadge,
-                  { backgroundColor: theme.backgroundElement },
-                  selectedCategory === cat && styles.categoryBadgeActive
-                ]}
-                onPress={() => setSelectedCategory(cat)}
+          <View
+            style={{
+              paddingHorizontal: 8,
+              justifyContent: "center",
+            }}
+          >
+            <Pressable
+              onPress={() => setShowActive(!showActive)}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 999,
+                backgroundColor: showActive ? "#412D15" : "rgba(65,45,21,0.2)",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: "700",
+                  color: showActive ? "#FAF8F3" : "#666",
+                }}
               >
-                <ThemedText 
-                  type="smallBold"
-                  themeColor={selectedCategory === cat ? 'background' : 'textSecondary'}
-                  style={selectedCategory === cat && { color: '#fff' }}
-                >
-                  {cat}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Toggle Active/Inactive */}
-        <View style={styles.statusToggleBar}>
-          <Pressable 
-            style={[styles.statusToggleBtn, showActive && styles.statusToggleActive]}
-            onPress={() => setShowActive(true)}
-          >
-            <ThemedText type="smallBold" themeColor={showActive ? 'text' : 'textSecondary'}>
-              Active Products ({store.products.filter(p => p.isActive).length})
-            </ThemedText>
-          </Pressable>
-          <Pressable 
-            style={[styles.statusToggleBtn, !showActive && styles.statusToggleActive]}
-            onPress={() => setShowActive(false)}
-          >
-            <ThemedText type="smallBold" themeColor={!showActive ? 'text' : 'textSecondary'}>
-              Inactive / Archived ({store.products.filter(p => !p.isActive).length})
-            </ThemedText>
-          </Pressable>
+                {showActive
+                  ? `Active (${activeProducts.length})`
+                  : `Archive (${store.products.filter((p) => !p.isActive).length})`}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         {/* Products List */}
-        <ScrollView 
-          contentContainerStyle={styles.listContainer}
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: 24,
+            paddingBottom: Platform.OS === "ios" ? 140 : 110,
+          }}
           showsVerticalScrollIndicator={false}
         >
+          {/* Categories Scroll */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, marginBottom: 16 }}
+            style={{ marginHorizontal: -24, paddingHorizontal: 24 }}
+          >
+            {categories.map((cat) => (
+              <Pressable
+                key={cat}
+                onPress={() => setSelectedCategory(cat)}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor:
+                    selectedCategory === cat
+                      ? "#412D15"
+                      : "rgba(255,255,255,0.3)",
+                  borderWidth: selectedCategory === cat ? 0 : 1,
+                  borderColor: "rgba(255,255,255,0.4)",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "700",
+                    color: selectedCategory === cat ? "#FAF8F3" : "#8B5A2B",
+                  }}
+                >
+                  {cat}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {/* Product Cards */}
           {filteredProducts.length === 0 ? (
-            <View style={styles.emptyView}>
-              <ThemedText type="small" themeColor="textSecondary">No products found matching filters.</ThemedText>
+            <View className="py-12 justify-center items-center">
+              <ThemedText type="small" themeColor="textMuted">
+                No products found.
+              </ThemedText>
             </View>
           ) : (
-            filteredProducts.map(p => {
+            filteredProducts.map((p) => {
               const isLowStock = p.currentStock <= p.minStockAlert;
               return (
                 <Pressable
                   key={p.code}
-                  style={({ pressed }) => [pressed && styles.pressed]}
+                  className="active:opacity-85 mb-3"
                   onPress={() => {
                     setSelectedProduct(p);
                     setShowDetailModal(true);
                   }}
                 >
-                  <ThemedView type="backgroundElement" style={styles.productCard}>
-                    <View style={styles.productCardHeader}>
-                      <View>
-                        <ThemedText type="smallBold">{p.name}</ThemedText>
-                        <ThemedText type="code" themeColor="textSecondary">{p.code}</ThemedText>
-                      </View>
-                      
-                      {/* Stock Level Tag */}
-                      <View style={[
-                        styles.stockTag,
-                        { 
-                          backgroundColor: !p.isActive ? '#60646C' : (isLowStock ? '#ffebee' : '#e8f5e9')
-                        }
-                      ]}>
-                        <Text style={[
-                          styles.stockTagText,
-                          { color: !p.isActive ? '#fff' : (isLowStock ? '#c62828' : '#2e7d32') }
-                        ]}>
-                          {p.currentStock} {p.unitType}
-                        </Text>
-                      </View>
-                    </View>
+                  <GlassCard
+                    variant="card"
+                    style={{ borderRadius: 20, overflow: "hidden", padding: 0 }}
+                  >
+                    <View
+                      style={{
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: 18,
+                        margin: 6,
+                        padding: 12,
+                        shadowColor: "#412D15",
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.04,
+                        shadowRadius: 6,
+                        elevation: 1,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: "700",
+                              color: "#1F150C",
+                              marginBottom: 2,
+                            }}
+                          >
+                            {p.name}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: "600",
+                              color: "#A0693A",
+                            }}
+                          >
+                            Code: {p.code}
+                          </Text>
+                        </View>
 
-                    <View style={styles.productCardFooter}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Category: <ThemedText type="smallBold">{p.category}</ThemedText>
-                      </ThemedText>
-                      <View style={styles.pricesRow}>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Avg Buy: <ThemedText type="smallBold">{store.settings.currency} {p.buyingPrice}</ThemedText>
-                        </ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary" style={{ marginLeft: Spacing.two }}>
-                          Sell: <ThemedText type="smallBold">{store.settings.currency} {p.sellingPrice}</ThemedText>
-                        </ThemedText>
+                        <View
+                          style={{
+                            borderRadius: 12,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            backgroundColor: !p.isActive
+                              ? "rgba(160,105,58,0.1)"
+                              : isLowStock
+                                ? "rgba(244,163,0,0.1)"
+                                : "rgba(46,125,50,0.1)",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: "700",
+                              color: !p.isActive
+                                ? "#8B5A2B"
+                                : isLowStock
+                                  ? "#F4A300"
+                                  : "#F4A300",
+                            }}
+                          >
+                            {p.currentStock} {p.unitType}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          borderTopWidth: 1,
+                          borderTopColor: "rgba(65,45,21,0.1)",
+                          paddingTop: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: "600",
+                            color: "#8B5A2B",
+                          }}
+                        >
+                          {p.category}
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: "700",
+                              color: "#1F150C",
+                            }}
+                          >
+                            Buy: {store.settings.currency}
+                            {p.buyingPrice}
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: "700",
+                              color: "#1F150C",
+                            }}
+                          >
+                            Sell: {store.settings.currency}
+                            {p.sellingPrice}
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  </ThemedView>
+                  </GlassCard>
                 </Pressable>
               );
             })
@@ -383,66 +667,110 @@ export default function InventoryScreen() {
         transparent={true}
         onRequestClose={() => setShowAddModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <ThemedView type="background" style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText type="subtitle">Add New Factory Product</ThemedText>
-              <Pressable onPress={() => setShowAddModal(false)}>
-                <CloseIcon size={24} color={theme.text} />
+        <View className="flex-1 justify-end bg-brand-primary/40">
+          <View className="bg-brand-cream rounded-t-[32px] p-6 max-h-[85%] border-t border-brand-glass shadow-lg">
+            <View className="flex-row justify-between items-center mb-5">
+              <ThemedText
+                type="subtitle"
+                className="text-brand-primary text-xl font-bold"
+              >
+                Add New Factory Product
+              </ThemedText>
+              <Pressable
+                className="w-10 h-10 rounded-full bg-brand-glass border border-brand-glass justify-center items-center active:opacity-75"
+                onPress={() => setShowAddModal(false)}
+              >
+                <CloseIcon size={20} color="#000000" />
               </Pressable>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.formGroup}>
-                <ThemedText type="small">Product Name *</ThemedText>
+              <View className="mb-4">
+                <ThemedText
+                  type="small"
+                  className="text-brand-secondary font-semibold mb-1"
+                >
+                  Product Name *
+                </ThemedText>
                 <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                  className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                   placeholder="e.g. Bed Sheet fabric"
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor="#999"
                   value={name}
                   onChangeText={setName}
                 />
               </View>
 
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <ThemedText type="small">Category *</ThemedText>
+              <View className="flex-row gap-4 mb-4">
+                <View className="flex-1">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Category *
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                    placeholder="e.g. TEXTILE, RAW"
-                    placeholderTextColor={theme.textSecondary}
+                    className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
+                    placeholder="e.g. TEXTILE"
+                    placeholderTextColor="#999"
                     value={category}
                     onChangeText={setCategory}
                   />
                 </View>
 
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <ThemedText type="small">Custom Code (Optional)</ThemedText>
+                <View className="flex-1">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Custom Code
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                     placeholder="Auto-generated if empty"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor="#999"
                     value={code}
                     onChangeText={setCode}
                   />
                 </View>
               </View>
 
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <ThemedText type="small">Base Unit *</ThemedText>
-                  <View style={[styles.pickerMock, { borderColor: theme.backgroundSelected }]}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      {(['piece', 'kg', 'g', 'liter', 'ml', 'dozen', 'box'] as const).map(unit => (
+              <View className="flex-row gap-4 mb-4 items-center">
+                <View className="flex-1">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Base Unit *
+                  </ThemedText>
+                  <View className="border border-brand-glass rounded-2xl h-12 bg-white/70 justify-center px-2">
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 6 }}
+                    >
+                      {(
+                        [
+                          "piece",
+                          "kg",
+                          "g",
+                          "liter",
+                          "ml",
+                          "dozen",
+                          "box",
+                        ] as const
+                      ).map((unit) => (
                         <Pressable
                           key={unit}
-                          style={[
-                            styles.pickerBtn,
-                            unitType === unit && styles.pickerBtnActive
-                          ]}
+                          className={`px-3 py-1.5 rounded-xl justify-center h-8 align-center self-center ${unitType === unit
+                            ? "bg-brand-accent"
+                            : "bg-transparent"
+                            }`}
                           onPress={() => setUnitType(unit)}
                         >
-                          <Text style={[styles.pickerBtnText, unitType === unit && { color: '#fff' }]}>
+                          <Text
+                            className={`text-xs font-bold ${unitType === unit ? "text-brand-cream" : "text-brand-secondary"}`}
+                          >
                             {unit}
                           </Text>
                         </Pressable>
@@ -451,11 +779,16 @@ export default function InventoryScreen() {
                   </View>
                 </View>
 
-                {unitType === 'box' && (
-                  <View style={[styles.formGroup, { width: 100 }]}>
-                    <ThemedText type="small">Pcs/Box</ThemedText>
+                {unitType === "box" && (
+                  <View className="w-24">
+                    <ThemedText
+                      type="small"
+                      className="text-brand-secondary font-semibold mb-1"
+                    >
+                      Pcs/Box
+                    </ThemedText>
                     <TextInput
-                      style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                      className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                       keyboardType="numeric"
                       value={piecesPerBox}
                       onChangeText={setPiecesPerBox}
@@ -464,47 +797,67 @@ export default function InventoryScreen() {
                 )}
               </View>
 
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <ThemedText type="small">Buying Price *</ThemedText>
+              <View className="flex-row gap-4 mb-4">
+                <View className="flex-1">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Buying Price *
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                     keyboardType="numeric"
                     placeholder="Cost per base unit"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor="#999"
                     value={buyingPrice}
                     onChangeText={setBuyingPrice}
                   />
                 </View>
 
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <ThemedText type="small">Selling Price *</ThemedText>
+                <View className="flex-1">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Selling Price *
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                     keyboardType="numeric"
                     placeholder="Price per base unit"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor="#999"
                     value={sellingPrice}
                     onChangeText={setSellingPrice}
                   />
                 </View>
               </View>
 
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <ThemedText type="small">Min Stock Alert *</ThemedText>
+              <View className="flex-row gap-4 mb-4">
+                <View className="flex-1">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Min Stock Alert *
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                     keyboardType="numeric"
                     value={minStockAlert}
                     onChangeText={setMinStockAlert}
                   />
                 </View>
 
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <ThemedText type="small">Initial Stock In</ThemedText>
+                <View className="flex-1">
+                  <ThemedText
+                    type="small"
+                    className="text-brand-secondary font-semibold mb-1"
+                  >
+                    Initial Stock In
+                  </ThemedText>
                   <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                     keyboardType="numeric"
                     value={initialStock}
                     onChangeText={setInitialStock}
@@ -512,38 +865,51 @@ export default function InventoryScreen() {
                 </View>
               </View>
 
-              <View style={styles.formGroup}>
-                <ThemedText type="small">Barcode / RFID (Optional)</ThemedText>
+              <View className="mb-4">
+                <ThemedText
+                  type="small"
+                  className="text-brand-secondary font-semibold mb-1"
+                >
+                  Barcode / RFID
+                </ThemedText>
                 <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                  className="h-12 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-sm font-inter"
                   placeholder="Scan or enter code"
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor="#999"
                   value={barcode}
                   onChangeText={setBarcode}
                 />
               </View>
 
-              <View style={styles.formGroup}>
-                <ThemedText type="small">Product Description</ThemedText>
+              <View className="mb-5">
+                <ThemedText
+                  type="small"
+                  className="text-brand-secondary font-semibold mb-1"
+                >
+                  Product Description
+                </ThemedText>
                 <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected, height: 60 }]}
+                  className="h-16 bg-white/70 border border-brand-glass rounded-2xl px-4 py-2 text-brand-primary text-sm font-inter"
                   multiline
                   placeholder="Additional notes"
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor="#999"
                   value={description}
                   onChangeText={setDescription}
                 />
               </View>
 
               <Pressable
-                style={({ pressed }) => [styles.submitBtn, pressed && styles.pressed]}
+                className="flex-row h-12 rounded-2xl justify-center items-center gap-2 shadow-sm active:opacity-85"
+                style={{ backgroundColor: "#412D15" }}
                 onPress={handleAddProduct}
               >
-                <CheckIcon size={20} color="#fff" />
-                <Text style={styles.submitBtnText}>Save Product Record</Text>
+                <CheckIcon size={18} color="#FAF8F3" />
+                <Text className="text-brand-cream font-bold text-sm">
+                  Save Product Record
+                </Text>
               </Pressable>
             </ScrollView>
-          </ThemedView>
+          </View>
         </View>
       </Modal>
 
@@ -554,242 +920,525 @@ export default function InventoryScreen() {
         transparent={true}
         onRequestClose={() => setShowDetailModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <ThemedView type="background" style={[styles.modalContent, { maxHeight: '95%' }]}>
+        <View className="flex-1 justify-end bg-brand-primary/40">
+          <View className="bg-brand-cream rounded-t-[32px] p-6 max-h-[95%] border-t border-brand-glass shadow-lg">
             {selectedProduct && (
               <>
-                <View style={styles.modalHeader}>
+                <View className="flex-row justify-between items-center mb-5">
                   <View>
-                    <ThemedText type="subtitle">{selectedProduct.name}</ThemedText>
-                    <ThemedText type="code" themeColor="textSecondary">{selectedProduct.code}</ThemedText>
+                    <ThemedText
+                      type="subtitle"
+                      className="text-brand-primary text-xl font-bold"
+                    >
+                      {selectedProduct.name}
+                    </ThemedText>
+                    <ThemedText
+                      type="code"
+                      themeColor="textMuted"
+                      className="text-[11px] mt-0.5"
+                    >
+                      Code: {selectedProduct.code}
+                    </ThemedText>
                   </View>
-                  <Pressable onPress={() => {
-                    setSelectedProduct(null);
-                    setShowDetailModal(false);
-                  }}>
-                    <CloseIcon size={24} color={theme.text} />
+                  <Pressable
+                    className="w-10 h-10 rounded-full bg-brand-glass border border-brand-glass justify-center items-center active:opacity-75"
+                    onPress={() => {
+                      setSelectedProduct(null);
+                      setShowDetailModal(false);
+                    }}
+                  >
+                    <CloseIcon size={20} color="#000000" />
                   </Pressable>
                 </View>
 
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  {/* Stats Summary */}
-                  <View style={styles.detailStatsGrid}>
-                    <ThemedView type="backgroundSelected" style={styles.detailStatBox}>
-                      <Text style={styles.detailStatLabel}>Current Stock</Text>
-                      <Text style={[
-                        styles.detailStatValue,
-                        { color: selectedProduct.currentStock <= selectedProduct.minStockAlert ? '#e53935' : '#4CAF50' }
-                      ]}>
-                        {selectedProduct.currentStock} {selectedProduct.unitType}
-                      </Text>
-                    </ThemedView>
+                  {/* Stats Summary with Enhanced KPI Cards */}
+                  <View
+                    className="bg-brand-primary/5 rounded-3xl p-4 mb-5"
+                    style={{ backgroundColor: "rgba(31, 21, 12, 0.08)" }}
+                  >
+                    <View className="flex-row gap-3">
+                      <GlassCard variant="card" className="flex-1">
+                        <ThemedText
+                          type="code"
+                          themeColor="textMuted"
+                          className="text-[10px] font-semibold tracking-wider"
+                        >
+                          CURRENT STOCK
+                        </ThemedText>
+                        <ThemedText
+                          type="subtitle"
+                          className={`text-2xl font-extrabold mt-1 ${selectedProduct.currentStock <=
+                            selectedProduct.minStockAlert
+                            ? "text-brand-warning"
+                            : "text-brand-accent"
+                            }`}
+                        >
+                          {selectedProduct.currentStock}
+                        </ThemedText>
+                        <ThemedText
+                          type="code"
+                          themeColor="textMuted"
+                          className="text-[9px] mt-1"
+                        >
+                          {selectedProduct.unitType}
+                        </ThemedText>
+                      </GlassCard>
 
-                    <ThemedView type="backgroundSelected" style={styles.detailStatBox}>
-                      <Text style={styles.detailStatLabel}>Avg Buying Price</Text>
-                      <Text style={styles.detailStatValue}>
-                        {store.settings.currency} {selectedProduct.buyingPrice}
-                      </Text>
-                    </ThemedView>
+                      <GlassCard variant="card" className="flex-1">
+                        <ThemedText
+                          type="code"
+                          themeColor="textMuted"
+                          className="text-[10px] font-semibold tracking-wider"
+                        >
+                          COST PRICE
+                        </ThemedText>
+                        <ThemedText
+                          type="subtitle"
+                          className="text-xl font-bold text-brand-primary mt-1"
+                        >
+                          {store.settings.currency}{" "}
+                          {selectedProduct.buyingPrice}
+                        </ThemedText>
+                      </GlassCard>
 
-                    <ThemedView type="backgroundSelected" style={styles.detailStatBox}>
-                      <Text style={styles.detailStatLabel}>Selling Price</Text>
-                      <Text style={styles.detailStatValue}>
-                        {store.settings.currency} {selectedProduct.sellingPrice}
-                      </Text>
-                    </ThemedView>
+                      <GlassCard variant="card" className="flex-1">
+                        <ThemedText
+                          type="code"
+                          themeColor="textMuted"
+                          className="text-[10px] font-semibold tracking-wider"
+                        >
+                          SELL PRICE
+                        </ThemedText>
+                        <ThemedText
+                          type="subtitle"
+                          className="text-xl font-bold text-brand-primary mt-1"
+                        >
+                          {store.settings.currency}{" "}
+                          {selectedProduct.sellingPrice}
+                        </ThemedText>
+                      </GlassCard>
+                    </View>
                   </View>
 
-                  {/* Actions / Audits */}
-                  <View style={styles.detailMetaGrid}>
-                    <ThemedText type="small">Category: <ThemedText type="smallBold">{selectedProduct.category}</ThemedText></ThemedText>
-                    {selectedProduct.barcode && (
-                      <ThemedText type="small">Barcode: <ThemedText type="code">{selectedProduct.barcode}</ThemedText></ThemedText>
-                    )}
-                    <ThemedText type="small">Min Limit: <ThemedText type="smallBold">{selectedProduct.minStockAlert} {selectedProduct.unitType}</ThemedText></ThemedText>
-                    {selectedProduct.description && (
-                      <ThemedText type="small" style={{ marginTop: 4 }}>Note: {selectedProduct.description}</ThemedText>
-                    )}
+                  {/* Profit Margin Card */}
+                  <GlassCard
+                    variant="card"
+                    className="mb-5 bg-brand-accent/10"
+                    style={{ borderLeftWidth: 4, borderLeftColor: "#412D15" }}
+                  >
+                    <ThemedText
+                      type="code"
+                      themeColor="textMuted"
+                      className="text-[10px] font-semibold tracking-wider"
+                    >
+                      PROFIT MARGIN
+                    </ThemedText>
+                    <View className="flex-row items-end gap-2 mt-2">
+                      <ThemedText
+                        type="subtitle"
+                        className="text-3xl font-extrabold text-brand-accent"
+                      >
+                        {Math.round(
+                          ((selectedProduct.sellingPrice -
+                            selectedProduct.buyingPrice) /
+                            selectedProduct.sellingPrice) *
+                          100 || 0,
+                        )}
+                        %
+                      </ThemedText>
+                      <ThemedText
+                        type="small"
+                        themeColor="textMuted"
+                        className="mb-1"
+                      >
+                        Profit per unit: {store.settings.currency}{" "}
+                        {Math.round(
+                          selectedProduct.sellingPrice -
+                          selectedProduct.buyingPrice,
+                        )}
+                      </ThemedText>
+                    </View>
+                  </GlassCard>
+
+                  {/* Metadata info */}
+                  <View
+                    className="bg-brand-primary/5 rounded-3xl p-4 mb-5"
+                    style={{ backgroundColor: "rgba(31, 21, 12, 0.08)" }}
+                  >
+                    <GlassCard
+                      variant="card"
+                      className="bg-transparent border-0 p-0"
+                    >
+                      <View className="gap-2.5">
+                        <View>
+                          <ThemedText
+                            type="code"
+                            themeColor="textMuted"
+                            className="text-[10px] font-semibold tracking-wider"
+                          >
+                            CATEGORY
+                          </ThemedText>
+                          <ThemedText
+                            type="subtitle"
+                            className="text-base font-bold text-brand-primary mt-1"
+                          >
+                            {selectedProduct.category}
+                          </ThemedText>
+                        </View>
+                        {selectedProduct.barcode && (
+                          <View>
+                            <ThemedText
+                              type="code"
+                              themeColor="textMuted"
+                              className="text-[10px] font-semibold tracking-wider"
+                            >
+                              BARCODE
+                            </ThemedText>
+                            <Text className="text-sm font-bold text-brand-primary mt-1">
+                              {selectedProduct.barcode}
+                            </Text>
+                          </View>
+                        )}
+                        <View>
+                          <ThemedText
+                            type="code"
+                            themeColor="textMuted"
+                            className="text-[10px] font-semibold tracking-wider"
+                          >
+                            ALERT LIMIT
+                          </ThemedText>
+                          <ThemedText
+                            type="subtitle"
+                            className="text-base font-bold text-brand-primary mt-1"
+                          >
+                            {selectedProduct.minStockAlert}{" "}
+                            {selectedProduct.unitType}
+                          </ThemedText>
+                        </View>
+                        {selectedProduct.description && (
+                          <View>
+                            <ThemedText
+                              type="code"
+                              themeColor="textMuted"
+                              className="text-[10px] font-semibold tracking-wider"
+                            >
+                              DESCRIPTION
+                            </ThemedText>
+                            <ThemedText
+                              type="small"
+                              className="text-brand-primary mt-1"
+                            >
+                              {selectedProduct.description}
+                            </ThemedText>
+                          </View>
+                        )}
+                      </View>
+                    </GlassCard>
                   </View>
 
                   {/* RESTOCK / STOCK IN PANELS */}
-                  <ThemedView type="backgroundElement" style={styles.actionSection}>
-                    <View style={styles.actionHeader}>
-                      <DatabaseIcon size={20} color="#208AEF" />
-                      <ThemedText type="smallBold" style={styles.actionSectionTitle}>Restock Entry (Stock IN)</ThemedText>
-                    </View>
-
-                    <View style={styles.formGroup}>
-                      <ThemedText type="small">Supplier Name *</ThemedText>
-                      <TextInput
-                        style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                        placeholder="Supplier/Vendor"
-                        placeholderTextColor={theme.textSecondary}
-                        value={supplierName}
-                        onChangeText={setSupplierName}
-                      />
-                    </View>
-
-                    <View style={styles.formRow}>
-                      <View style={[styles.formGroup, { flex: 1 }]}>
-                        <ThemedText type="small">Quantity to Add ({selectedProduct.unitType}) *</ThemedText>
-                        <TextInput
-                          style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                          keyboardType="numeric"
-                          placeholder="e.g. 50"
-                          placeholderTextColor={theme.textSecondary}
-                          value={purchaseQty}
-                          onChangeText={setPurchaseQty}
-                        />
-                      </View>
-
-                      <View style={[styles.formGroup, { flex: 1 }]}>
-                        <ThemedText type="small">Purchase Unit Cost *</ThemedText>
-                        <TextInput
-                          style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                          keyboardType="numeric"
-                          placeholder="Per base unit"
-                          placeholderTextColor={theme.textSecondary}
-                          value={purchasePrice}
-                          onChangeText={setPurchasePrice}
-                        />
-                      </View>
-                    </View>
-
-                    <TextInput
-                      style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected, marginBottom: 8 }]}
-                      placeholder="Audit note (optional)"
-                      placeholderTextColor={theme.textSecondary}
-                      value={purchaseNote}
-                      onChangeText={setPurchaseNote}
-                    />
-
-                    <Pressable
-                      style={({ pressed }) => [styles.purchaseBtn, pressed && styles.pressed]}
-                      onPress={handleRestock}
+                  <GlassCard
+                    variant="cardStrong"
+                    style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+                    className="mb-5 border border-brand-glass"
+                  >
+                    <View
+                      style={{
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: 28,
+                        margin: 8,
+                        padding: 16,
+                        shadowColor: "#412D15",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.06,
+                        shadowRadius: 8,
+                        elevation: 2,
+                      }}
                     >
-                      <PlusIcon size={18} color="#fff" />
-                      <Text style={styles.purchaseBtnText}>Post restock and update Cost</Text>
-                    </Pressable>
-                  </ThemedView>
+                      <View className="flex-row items-center gap-2 mb-4">
+                        <DatabaseIcon size={18} color="#412D15" />
+                        <ThemedText
+                          type="smallBold"
+                          className="text-brand-primary font-bold text-sm"
+                        >
+                          Restock Entry (Stock IN)
+                        </ThemedText>
+                      </View>
+
+                      <View className="mb-3">
+                        <ThemedText
+                          type="small"
+                          className="text-brand-secondary font-semibold mb-1"
+                        >
+                          Supplier Name *
+                        </ThemedText>
+                        <TextInput
+                          className="h-11 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-xs font-inter"
+                          placeholder="Supplier/Vendor name"
+                          placeholderTextColor="#999"
+                          value={supplierName}
+                          onChangeText={setSupplierName}
+                        />
+                      </View>
+
+                      <View className="flex-row gap-3 mb-3">
+                        <View className="flex-1">
+                          <ThemedText
+                            type="small"
+                            className="text-brand-secondary font-semibold mb-1"
+                          >
+                            Quantity *
+                          </ThemedText>
+                          <TextInput
+                            className="h-11 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-xs font-inter"
+                            keyboardType="numeric"
+                            placeholder={`Qty in ${selectedProduct.unitType}`}
+                            placeholderTextColor="#999"
+                            value={purchaseQty}
+                            onChangeText={setPurchaseQty}
+                          />
+                        </View>
+
+                        <View className="flex-1">
+                          <ThemedText
+                            type="small"
+                            className="text-brand-secondary font-semibold mb-1"
+                          >
+                            Unit Buying Price *
+                          </ThemedText>
+                          <TextInput
+                            className="h-11 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-xs font-inter"
+                            keyboardType="numeric"
+                            placeholder="Per base unit"
+                            placeholderTextColor="#999"
+                            value={purchasePrice}
+                            onChangeText={setPurchasePrice}
+                          />
+                        </View>
+                      </View>
+
+                      <TextInput
+                        className="h-11 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-xs font-inter mb-4"
+                        placeholder="Auditing notes (optional)"
+                        placeholderTextColor="#999"
+                        value={purchaseNote}
+                        onChangeText={setPurchaseNote}
+                      />
+
+                      <Pressable
+                        className="flex-row h-11 rounded-2xl justify-center items-center gap-2 shadow-sm active:opacity-85"
+                        style={{ backgroundColor: "#412D15" }}
+                        onPress={handleRestock}
+                      >
+                        <PlusIcon size={16} color="#FAF8F3" />
+                        <Text className="text-brand-cream font-bold text-xs">
+                          Post Restock and Update Cost
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </GlassCard>
 
                   {/* STOCK ADJUSTMENT / DAMAGES */}
-                  <ThemedView type="backgroundElement" style={styles.actionSection}>
-                    <View style={styles.actionHeader}>
-                      <WarningIcon size={20} color="#FF9800" />
-                      <ThemedText type="smallBold" style={styles.actionSectionTitle}>Stock Auditing (Adjustment & Damage)</ThemedText>
-                    </View>
+                  <GlassCard
+                    variant="cardStrong"
+                    style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+                    className="mb-5 border border-brand-glass"
+                  >
+                    <View
+                      style={{
+                        backgroundColor: "#FFFFFF",
+                        borderRadius: 28,
+                        margin: 8,
+                        padding: 16,
+                        shadowColor: "#412D15",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.06,
+                        shadowRadius: 8,
+                        elevation: 2,
+                      }}
+                    >
+                      <View className="flex-row items-center gap-2 mb-4">
+                        <WarningIcon size={18} color="#F4A300" />
+                        <ThemedText
+                          type="smallBold"
+                          className="text-brand-primary font-bold text-sm"
+                        >
+                          Stock Auditing (Adjustment & Damage)
+                        </ThemedText>
+                      </View>
 
-                    <View style={styles.formRow}>
-                      <View style={[styles.formGroup, { flex: 1.5 }]}>
-                        <ThemedText type="small">Adjustment Type</ThemedText>
-                        <View style={styles.toggleRow}>
-                          <Pressable 
-                            style={[
-                              styles.toggleOption, 
-                              adjustmentType === 'adjustment' && { backgroundColor: '#208AEF' }
-                            ]}
-                            onPress={() => setAdjustmentType('adjustment')}
+                      <View className="flex-row gap-3 mb-3 items-center">
+                        <View className="flex-[1.5]">
+                          <ThemedText
+                            type="small"
+                            className="text-brand-secondary font-semibold mb-1"
                           >
-                            <Text style={[styles.toggleText, adjustmentType === 'adjustment' && { color: '#fff' }]}>
-                              Adjust (+)
-                            </Text>
-                          </Pressable>
-                          <Pressable 
-                            style={[
-                              styles.toggleOption, 
-                              adjustmentType === 'damage' && { backgroundColor: '#e53935' }
-                            ]}
-                            onPress={() => setAdjustmentType('damage')}
+                            Adjustment Type
+                          </ThemedText>
+                          <View className="flex-row h-11 bg-brand-surface rounded-2xl p-1 border border-brand-glass">
+                            <Pressable
+                              className={`flex-1 justify-center items-center rounded-xl ${adjustmentType === "adjustment"
+                                ? "bg-brand-accent"
+                                : "bg-transparent"
+                                }`}
+                              onPress={() => setAdjustmentType("adjustment")}
+                            >
+                              <Text
+                                className={`text-[11px] font-extrabold ${adjustmentType === "adjustment"
+                                  ? "text-brand-cream"
+                                  : "text-brand-secondary"
+                                  }`}
+                              >
+                                Adjust (+)
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              className={`flex-1 justify-center items-center rounded-xl`}
+                              style={
+                                adjustmentType === "damage"
+                                  ? {
+                                    backgroundColor:
+                                      "rgba(139, 90, 43, 0.25)",
+                                  }
+                                  : {}
+                              }
+                              onPress={() => setAdjustmentType("damage")}
+                            >
+                              <Text
+                                className={`text-[11px] font-extrabold ${adjustmentType === "damage"
+                                  ? "text-brand-cream"
+                                  : "text-brand-secondary"
+                                  }`}
+                              >
+                                Damage (-)
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+
+                        <View className="flex-1">
+                          <ThemedText
+                            type="small"
+                            className="text-brand-secondary font-semibold mb-1"
                           >
-                            <Text style={[styles.toggleText, adjustmentType === 'damage' && { color: '#fff' }]}>
-                              Damage (-)
-                            </Text>
-                          </Pressable>
+                            Quantity *
+                          </ThemedText>
+                          <TextInput
+                            className="h-11 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-xs font-inter"
+                            keyboardType="numeric"
+                            placeholder="e.g. 5"
+                            placeholderTextColor="#999"
+                            value={adjustmentQty}
+                            onChangeText={setAdjustmentQty}
+                          />
                         </View>
                       </View>
 
-                      <View style={[styles.formGroup, { flex: 1 }]}>
-                        <ThemedText type="small">Quantity *</ThemedText>
-                        <TextInput
-                          style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                          keyboardType="numeric"
-                          placeholder="e.g. 5"
-                          placeholderTextColor={theme.textSecondary}
-                          value={adjustmentQty}
-                          onChangeText={setAdjustmentQty}
-                        />
-                      </View>
+                      <TextInput
+                        className="h-11 bg-white/70 border border-brand-glass rounded-2xl px-4 text-brand-primary text-xs font-inter mb-4"
+                        placeholder="Audit note (required)"
+                        placeholderTextColor="#999"
+                        value={adjustmentNote}
+                        onChangeText={setAdjustmentNote}
+                      />
+
+                      <Pressable
+                        className="flex-row h-11 rounded-2xl justify-center items-center gap-2 shadow-sm active:opacity-85"
+                        style={{
+                          backgroundColor:
+                            adjustmentType === "damage" ? "#8B5A2B" : "#412D15",
+                        }}
+                        onPress={handleAdjustment}
+                      >
+                        <WarningIcon size={16} color="#FAF8F3" />
+                        <Text className="text-brand-cream font-bold text-xs">
+                          Post Audit Adjustment
+                        </Text>
+                      </Pressable>
                     </View>
-
-                    <TextInput
-                      style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected, marginBottom: 8 }]}
-                      placeholder="Note required (e.g. Annual audit discrepancies)"
-                      placeholderTextColor={theme.textSecondary}
-                      value={adjustmentNote}
-                      onChangeText={setAdjustmentNote}
-                    />
-
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.auditBtn, 
-                        pressed && styles.pressed,
-                        { backgroundColor: adjustmentType === 'damage' ? '#e53935' : '#FF9800' }
-                      ]}
-                      onPress={handleAdjustment}
-                    >
-                      <WarningIcon size={18} color="#fff" />
-                      <Text style={styles.purchaseBtnText}>Post adjustment ledger</Text>
-                    </Pressable>
-                  </ThemedView>
+                  </GlassCard>
 
                   {/* Stock Ledger History */}
-                  <View style={styles.ledgerSection}>
-                    <ThemedText type="smallBold" style={styles.ledgerTitle}>Product Stock Ledger</ThemedText>
-                    
+                  <View className="mb-6">
+                    <ThemedText
+                      type="smallBold"
+                      className="text-brand-primary font-bold text-[15px] mb-3"
+                    >
+                      Product Stock Ledger
+                    </ThemedText>
+
                     {productMovements.length === 0 ? (
-                      <ThemedText type="small" themeColor="textSecondary">No ledger movements recorded.</ThemedText>
+                      <ThemedText type="small" themeColor="textMuted">
+                        No ledger movements recorded.
+                      </ThemedText>
                     ) : (
-                      <View style={styles.ledgerTable}>
-                        <View style={styles.tableHeader}>
-                          <Text style={[styles.tableHeadCell, { flex: 1.2 }]}>Date</Text>
-                          <Text style={styles.tableHeadCell}>Type</Text>
-                          <Text style={styles.tableHeadCell}>Qty</Text>
-                          <Text style={[styles.tableHeadCell, { flex: 1.5 }]}>Note</Text>
+                      <View className="border border-brand-glass rounded-2xl overflow-hidden bg-brand-glass/30 shadow-xs">
+                        <View className="flex-row bg-brand-accent/5 py-3 px-4 border-b border-brand-glass">
+                          <Text className="flex-[1.2] font-bold text-[11px] text-brand-secondary">
+                            Date
+                          </Text>
+                          <Text className="flex-1 font-bold text-[11px] text-brand-secondary text-center">
+                            Type
+                          </Text>
+                          <Text className="flex-1 font-bold text-[11px] text-brand-secondary text-right">
+                            Qty
+                          </Text>
+                          <Text className="flex-[1.5] font-bold text-[11px] text-brand-secondary pl-3">
+                            Note
+                          </Text>
                         </View>
 
-                        {productMovements.map(m => {
-                          const formattedDate = new Date(m.date).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
+                        {productMovements.map((m) => {
+                          const formattedDate = new Date(
+                            m.date,
+                          ).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
                           });
-                          
-                          let typeColor = '#2e7d32'; // purchase
-                          if (m.type === 'sale') typeColor = '#1565c0';
-                          else if (m.type === 'damage') typeColor = '#c62828';
-                          else if (m.type === 'adjustment') typeColor = '#ef6c00';
-                          else if (m.type === 'return') typeColor = '#6a1b9a';
+
+                          let typeBadgeColor = "bg-brand-accent"; // purchase
+                          if (m.type === "sale")
+                            typeBadgeColor = "bg-brand-accent";
+                          else if (m.type === "damage")
+                            typeBadgeColor = "bg-brand-warning";
+                          else if (m.type === "adjustment")
+                            typeBadgeColor = "bg-brand-warning";
+                          else if (m.type === "return")
+                            typeBadgeColor = "bg-brand-accent";
 
                           return (
-                            <View key={m.id} style={styles.tableRow}>
-                              <Text style={[styles.tableCell, { flex: 1.2, fontSize: 11 }]}>{formattedDate}</Text>
-                              <View style={[styles.typeBadge, { backgroundColor: typeColor }]}>
-                                <Text style={styles.typeBadgeText}>{m.type.toUpperCase()}</Text>
+                            <View
+                              key={m.id}
+                              className="flex-row items-center py-3 px-4 border-b border-brand-glass/50 bg-white/20"
+                            >
+                              <Text className="flex-[1.2] text-[10px] text-brand-secondary font-medium">
+                                {formattedDate}
+                              </Text>
+                              <View className="flex-1 items-center">
+                                <View
+                                  className={`rounded px-1.5 py-0.5 ${typeBadgeColor}`}
+                                >
+                                  <Text className="text-[8px] font-bold text-white uppercase">
+                                    {m.type}
+                                  </Text>
+                                </View>
                               </View>
-                              <Text style={[
-                                styles.tableCell, 
-                                { 
-                                  fontWeight: '700', 
-                                  color: m.quantity < 0 ? '#c62828' : '#2e7d32',
-                                  textAlign: 'right',
-                                  paddingRight: 6
-                                }
-                              ]}>
+                              <Text
+                                className={`flex-1 text-[11px] font-extrabold text-right pr-1 ${m.quantity < 0
+                                  ? "text-brand-warning"
+                                  : "text-brand-accent"
+                                  }`}
+                              >
                                 {m.quantity > 0 ? `+${m.quantity}` : m.quantity}
                               </Text>
-                              <Text style={[styles.tableCell, { flex: 1.5, fontSize: 11 }]} numberOfLines={2}>
-                                {m.note || '-'}
+                              <Text
+                                className="flex-[1.5] text-[10px] text-brand-muted pl-3 font-medium"
+                                numberOfLines={2}
+                              >
+                                {m.note || "-"}
                               </Text>
                             </View>
                           );
@@ -799,24 +1448,29 @@ export default function InventoryScreen() {
                   </View>
 
                   {/* Soft Delete Archive/Restore Buttons */}
-                  <View style={styles.archiveActions}>
+                  <View className="mt-4 mb-10">
                     <Pressable
-                      style={({ pressed }) => [
-                        styles.archiveBtn,
-                        pressed && styles.pressed,
-                        { backgroundColor: selectedProduct.isActive ? '#e53935' : '#4CAF50' }
-                      ]}
+                      className="flex-row h-12 rounded-2xl justify-center items-center gap-2 active:opacity-85 shadow-sm"
+                      style={{
+                        backgroundColor: selectedProduct.isActive
+                          ? "#8B5A2B"
+                          : "#412D15",
+                      }}
                       onPress={() => handleToggleProductActive(selectedProduct)}
                     >
                       {selectedProduct.isActive ? (
                         <>
-                          <TrashIcon size={18} color="#fff" />
-                          <Text style={styles.archiveBtnText}>Deactivate & Archive Product</Text>
+                          <TrashIcon size={16} color="#FAF8F3" />
+                          <Text className="text-brand-cream font-bold text-sm">
+                            Deactivate & Archive Product
+                          </Text>
                         </>
                       ) : (
                         <>
-                          <CheckIcon size={18} color="#fff" />
-                          <Text style={styles.archiveBtnText}>Restore & Reactivate Product</Text>
+                          <CheckIcon size={16} color="#FAF8F3" />
+                          <Text className="text-brand-cream font-bold text-sm">
+                            Restore & Reactivate Product
+                          </Text>
                         </>
                       )}
                     </Pressable>
@@ -824,357 +1478,77 @@ export default function InventoryScreen() {
                 </ScrollView>
               </>
             )}
-          </ThemedView>
+          </View>
+
+          {/* Confirm/Alert overlay — rendered inside this modal to avoid nested Modal issues on iOS */}
+          {modalVisible && (
+            <Pressable
+              style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.45)',
+                justifyContent: 'center', alignItems: 'center',
+                paddingHorizontal: 32,
+              }}
+              onPress={() => setModalVisible(false)}
+            >
+              <Pressable
+                onPress={(e) => e.stopPropagation()}
+                style={{
+                  backgroundColor: '#FAF8F3',
+                  borderRadius: 28,
+                  paddingTop: 32, paddingBottom: 24, paddingHorizontal: 24,
+                  alignItems: 'center', width: '100%', maxWidth: 360,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
+                  shadowOpacity: 0.15, shadowRadius: 24, elevation: 12,
+                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)',
+                }}
+              >
+                <View style={{
+                  width: 56, height: 56, borderRadius: 28,
+                  backgroundColor: modalVariant === 'success' ? 'rgba(46,125,50,0.12)'
+                    : modalVariant === 'error' ? 'rgba(211,47,47,0.12)'
+                      : modalVariant === 'warning' ? 'rgba(244,163,0,0.12)'
+                        : 'rgba(65,45,21,0.10)',
+                  justifyContent: 'center', alignItems: 'center',
+                }}>
+                  {modalVariant === 'success' && <CheckIcon size={28} color="#2E7D32" />}
+                  {modalVariant === 'error' && <CloseIcon size={28} color="#D32F2F" />}
+                  {(modalVariant === 'warning' || modalVariant === 'info') && <WarningIcon size={28} color={modalVariant === 'warning' ? '#F4A300' : '#412D15'} />}
+                </View>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#1F150C', marginTop: 16, textAlign: 'center' }}>
+                  {modalTitle}
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: '#666', marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+                  {modalMessage}
+                </Text>
+                <View style={{ width: '100%', height: 1, backgroundColor: 'rgba(65,45,21,0.08)', marginTop: 20, marginBottom: 16 }} />
+                <Pressable
+                  onPress={() => setModalVisible(false)}
+                  style={({ pressed }) => ({
+                    width: '100%', height: 44, borderRadius: 14,
+                    justifyContent: 'center', alignItems: 'center',
+                    backgroundColor: modalVariant === 'error' ? '#D32F2F'
+                      : modalVariant === 'warning' ? '#F4A300'
+                        : '#412D15',
+                    opacity: pressed ? 0.8 : 1,
+                  })}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>OK</Text>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          )}
         </View>
       </Modal>
-    </ThemedView>
+
+      {/* Confirm/Alert Modal — for screens outside the detail modal */}
+      <ConfirmModal
+        visible={modalVisible && !showDetailModal}
+        onClose={() => setModalVisible(false)}
+        variant={modalVariant}
+        title={modalTitle}
+        message={modalMessage}
+      />
+    </GradientBg>
   );
 }
-
-const styles = StyleSheet.create({
-  main: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  topControlBar: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    gap: Spacing.three,
-    alignItems: 'center',
-  },
-  searchWrapper: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0F0F3',
-    height: 40,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-  },
-  searchInput: {
-    flex: 1,
-    height: '100%',
-    marginLeft: Spacing.two,
-    fontSize: 14,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    backgroundColor: '#208AEF',
-    height: 40,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    alignItems: 'center',
-    gap: Spacing.one,
-  },
-  addBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  categoryScroll: {
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.two,
-  },
-  categoryBadge: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
-  },
-  categoryBadgeActive: {
-    backgroundColor: '#208AEF',
-  },
-  statusToggleBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F3',
-    marginHorizontal: Spacing.four,
-    marginVertical: Spacing.two,
-  },
-  statusToggleBtn: {
-    flex: 1,
-    paddingVertical: Spacing.two,
-    alignItems: 'center',
-  },
-  statusToggleActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#208AEF',
-  },
-  listContainer: {
-    paddingHorizontal: Spacing.four,
-    paddingBottom: BottomTabInset + Spacing.five,
-    gap: Spacing.three,
-  },
-  emptyView: {
-    paddingVertical: Spacing.six,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  productCard: {
-    padding: Spacing.four,
-    borderRadius: Spacing.three,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  productCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.two,
-  },
-  stockTag: {
-    paddingVertical: Spacing.one / 2,
-    paddingHorizontal: Spacing.two,
-    borderRadius: Spacing.two,
-  },
-  stockTagText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  productCardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-    paddingTop: Spacing.two,
-  },
-  pricesRow: {
-    flexDirection: 'row',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
-    padding: Spacing.four,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.four,
-  },
-  formGroup: {
-    marginBottom: Spacing.three,
-  },
-  formRow: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-  },
-  input: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    marginTop: Spacing.one,
-    fontSize: 14,
-  },
-  pickerMock: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    height: 40,
-    marginTop: Spacing.one,
-    paddingHorizontal: Spacing.two,
-    justifyContent: 'center',
-  },
-  pickerBtn: {
-    paddingHorizontal: Spacing.two,
-    marginHorizontal: Spacing.one,
-    borderRadius: Spacing.one,
-    justifyContent: 'center',
-    backgroundColor: '#F0F0F3',
-    height: 28,
-    alignSelf: 'center',
-  },
-  pickerBtnActive: {
-    backgroundColor: '#208AEF',
-  },
-  pickerBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-  },
-  submitBtn: {
-    flexDirection: 'row',
-    backgroundColor: '#4CAF50',
-    height: 48,
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.three,
-  },
-  submitBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  detailStatsGrid: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  detailStatBox: {
-    flex: 1,
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
-    alignItems: 'center',
-  },
-  detailStatLabel: {
-    fontSize: 10,
-    color: '#888',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  detailStatValue: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  detailMetaGrid: {
-    marginBottom: Spacing.four,
-    gap: Spacing.one,
-  },
-  actionSection: {
-    padding: Spacing.four,
-    borderRadius: Spacing.three,
-    marginBottom: Spacing.four,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.01,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  actionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  actionSectionTitle: {
-    fontSize: 14,
-  },
-  purchaseBtn: {
-    flexDirection: 'row',
-    backgroundColor: '#208AEF',
-    height: 40,
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  purchaseBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    height: 40,
-    marginTop: Spacing.one,
-    backgroundColor: '#F0F0F3',
-    borderRadius: Spacing.two,
-    padding: 2,
-  },
-  toggleOption: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: Spacing.two - 2,
-  },
-  toggleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#666',
-  },
-  auditBtn: {
-    flexDirection: 'row',
-    backgroundColor: '#FF9800',
-    height: 40,
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  ledgerSection: {
-    marginVertical: Spacing.three,
-  },
-  ledgerTitle: {
-    fontSize: 16,
-    marginBottom: Spacing.two,
-  },
-  ledgerTable: {
-    borderWidth: 1,
-    borderColor: '#F0F0F3',
-    borderRadius: Spacing.two,
-    overflow: 'hidden',
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#F0F0F3',
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-  },
-  tableHeadCell: {
-    flex: 1,
-    fontWeight: '800',
-    fontSize: 12,
-    color: '#666',
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F3',
-  },
-  tableCell: {
-    flex: 1,
-    fontSize: 12,
-  },
-  typeBadge: {
-    width: 66,
-    paddingVertical: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  typeBadgeText: {
-    fontSize: 8,
-    color: '#fff',
-    fontWeight: '800',
-  },
-  archiveActions: {
-    marginTop: Spacing.four,
-    marginBottom: Spacing.six,
-  },
-  archiveBtn: {
-    flexDirection: 'row',
-    height: 44,
-    borderRadius: Spacing.two,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  archiveBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-});

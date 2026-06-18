@@ -1,73 +1,52 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
-
-import { Fonts, ThemeColor } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import React from 'react';
+import { Text, type TextProps } from 'react-native';
 
 export type ThemedTextProps = TextProps & {
   type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
-  themeColor?: ThemeColor;
+  themeColor?: 'text' | 'textSecondary' | 'textMuted' | 'textInverse' | 'success' | 'danger' | 'warning' | 'accent' | 'accent-sec';
+  className?: string;
 };
 
-export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
-  const theme = useTheme();
+export function ThemedText({
+  style,
+  type = 'default',
+  themeColor = 'text',
+  className = '',
+  ...rest
+}: ThemedTextProps) {
+  // Map our semantic themes to Tailwind colors
+  const colorMap = {
+    text: 'text-brand-primary',
+    textSecondary: 'text-brand-secondary',
+    textMuted: 'text-brand-muted',
+    textInverse: 'text-white',
+    success: 'text-brand-success',
+    danger: 'text-brand-danger',
+    warning: 'text-brand-warning',
+    accent: 'text-brand-accent',
+    'accent-sec': 'text-brand-accent-sec',
+  };
+
+  // Map types to text styling classes
+  const typeMap = {
+    default: 'font-inter text-[15px] font-medium leading-relaxed',
+    small: 'font-inter text-[13px] font-normal leading-relaxed',
+    smallBold: 'font-inter text-[13px] font-bold leading-relaxed',
+    title: 'font-inter text-3xl font-extrabold tracking-tight',
+    subtitle: 'font-inter text-xl font-bold tracking-tight',
+    link: 'font-inter text-[14px] font-semibold underline',
+    linkPrimary: 'font-inter text-[14px] font-bold text-brand-accent',
+    code: 'font-mono text-xs font-bold bg-transparent tracking-wide',
+  };
+
+  const combinedClasses = `${colorMap[themeColor]} ${typeMap[type]} ${className}`;
 
   return (
     <Text
-      style={[
-        { color: theme[themeColor ?? 'text'] },
-        type === 'default' && styles.default,
-        type === 'title' && styles.title,
-        type === 'small' && styles.small,
-        type === 'smallBold' && styles.smallBold,
-        type === 'subtitle' && styles.subtitle,
-        type === 'link' && styles.link,
-        type === 'linkPrimary' && styles.linkPrimary,
-        type === 'code' && styles.code,
-        style,
-      ]}
+      className={combinedClasses}
+      style={style}
       {...rest}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  small: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 500,
-  },
-  smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 700,
-  },
-  default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 500,
-  },
-  title: {
-    fontSize: 48,
-    fontWeight: 600,
-    lineHeight: 52,
-  },
-  subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
-  },
-  link: {
-    lineHeight: 30,
-    fontSize: 14,
-  },
-  linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
-    color: '#3c87f7',
-  },
-  code: {
-    fontFamily: Fonts.mono,
-    fontWeight: Platform.select({ android: 700 }) ?? 500,
-    fontSize: 12,
-  },
-});
+export default ThemedText;

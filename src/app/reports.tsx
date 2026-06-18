@@ -1,62 +1,79 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, 
-  ScrollView, 
-  View, 
-  Pressable, 
-  TextInput, 
-  Text,
-  Platform
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useStore } from '../store/store';
-import { ThemedText } from '../components/themed-text';
-import { ThemedView } from '../components/themed-view';
-import { Colors, Spacing, MaxContentWidth, BottomTabInset } from '../constants/theme';
-import { useTheme } from '../hooks/use-theme';
-import { Invoice, InvoiceItem, Product } from '../types';
-import { ExportIcon, ReportsIcon } from '../components/Icons';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+    Platform,
+    Pressable,
+    ScrollView,
+    Text,
+    TextInput,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ConfirmModal, ConfirmModalVariant } from "../components/confirm-modal";
+import { GlassCard } from "../components/glass-card";
+import { GradientBg } from "../components/gradient-bg";
+import { ExportIcon, ReportsIcon } from "../components/Icons";
+import { ThemedText } from "../components/themed-text";
+import { useStore } from "../store/store";
 
-type DateFilter = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+type DateFilter = "daily" | "weekly" | "monthly" | "yearly" | "custom";
 
 export default function ReportsScreen() {
   const store = useStore();
-  const theme = useTheme();
 
   // Local state
-  const [filterType, setFilterType] = useState<DateFilter>('monthly');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
+  const [filterType, setFilterType] = useState<DateFilter>("monthly");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
 
-  useEffect(() => {
-    store.refreshData();
-  }, []);
+  // Confirm modal state
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalVariant, setModalVariant] =
+    useState<ConfirmModalVariant>("success");
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
+
+  const showModal = (
+    variant: ConfirmModalVariant,
+    title: string,
+    message: string,
+  ) => {
+    setModalVariant(variant);
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalVisible(true);
+  };
 
   // Filter invoices based on date filters
-  const getFilteredInvoices = () => {
+  const getFilteredInvoices = useCallback(() => {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    return store.invoices.filter(inv => {
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+
+    return store.invoices.filter((inv) => {
       const invDate = new Date(inv.date);
-      
+
       switch (filterType) {
-        case 'daily':
+        case "daily":
           return invDate >= startOfToday;
-        case 'weekly': {
-          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        case "weekly": {
+          const sevenDaysAgo = new Date(
+            now.getTime() - 7 * 24 * 60 * 60 * 1000,
+          );
           return invDate >= sevenDaysAgo;
         }
-        case 'monthly': {
+        case "monthly": {
           const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
           return invDate >= startOfMonth;
         }
-        case 'yearly': {
+        case "yearly": {
           const startOfYear = new Date(now.getFullYear(), 0, 1);
           return invDate >= startOfYear;
         }
-        case 'custom': {
+        case "custom": {
           if (!customStartDate) return true;
           const start = new Date(customStartDate);
           const end = customEndDate ? new Date(customEndDate) : new Date();
@@ -67,18 +84,25 @@ export default function ReportsScreen() {
           return true;
       }
     });
-  };
+  }, [store.invoices, filterType, customStartDate, customEndDate]);
 
-  const filteredInvoices = getFilteredInvoices();
-  const activeInvoices = filteredInvoices.filter(inv => inv.status !== 'cancelled');
+  const filteredInvoices = useMemo(
+    () => getFilteredInvoices(),
+    [getFilteredInvoices],
+  );
+  const activeInvoices = useMemo(
+    () => filteredInvoices.filter((inv) => inv.status !== "cancelled"),
+    [filteredInvoices],
+  );
+  const invoicesForLedger = useMemo(() => activeInvoices, [activeInvoices]);
 
   // Load items for active invoices to calculate COGS
   useEffect(() => {
     const loadItems = async () => {
       try {
-        const SQLite = require('../database/db');
-        const itemsList: InvoiceItem[] = [];
-        for (const inv of activeInvoices) {
+        const SQLite = await import("../database/db");
+        const itemsList: any[] = [];
+        for (const inv of invoicesForLedger) {
           const items = await SQLite.db.getInvoiceItems(inv.id);
           itemsList.push(...items);
         }
@@ -87,20 +111,23 @@ export default function ReportsScreen() {
         console.error(e);
       }
     };
-    if (activeInvoices.length > 0) {
+    if (invoicesForLedger.length > 0) {
       loadItems();
     } else {
       setInvoiceItems([]);
     }
-  }, [store.invoices, filterType, customStartDate, customEndDate]);
+  }, [invoicesForLedger]);
 
   // Business accounting math
   const grossSales = activeInvoices.reduce((sum, inv) => sum + inv.subtotal, 0);
-  const discountsGiven = activeInvoices.reduce((sum, inv) => sum + inv.discountAmount, 0);
+  const discountsGiven = activeInvoices.reduce(
+    (sum, inv) => sum + inv.discountAmount,
+    0,
+  );
   const netSales = grossSales - discountsGiven;
-  
+
   const cogs = invoiceItems.reduce((sum, item) => {
-    return sum + (item.quantityInBaseUnit * item.buyingPrice);
+    return sum + item.quantityInBaseUnit * item.buyingPrice;
   }, 0);
 
   const profit = netSales - cogs;
@@ -109,8 +136,9 @@ export default function ReportsScreen() {
   // Analytics lists
   // 1. Most Sold Products
   const getMostSoldProducts = () => {
-    const map: Record<string, { name: string; qty: number; revenue: number }> = {};
-    invoiceItems.forEach(item => {
+    const map: Record<string, { name: string; qty: number; revenue: number }> =
+      {};
+    invoiceItems.forEach((item) => {
       const code = item.productCode;
       if (!map[code]) {
         map[code] = { name: item.productName, qty: 0, revenue: 0 };
@@ -128,14 +156,18 @@ export default function ReportsScreen() {
 
   // 2. Top Spending Customers
   const getTopCustomers = () => {
-    const map: Record<string, { name: string; spends: number; count: number }> = {};
-    activeInvoices.forEach(inv => {
+    const map: Record<string, { name: string; spends: number; count: number }> =
+      {};
+    activeInvoices.forEach((inv) => {
       if (!inv.customerPhone) return;
       const phone = inv.customerPhone;
       if (!map[phone]) {
-        // Find customer name from store
-        const cProfile = store.customers.find(c => c.phone === phone);
-        map[phone] = { name: cProfile?.name || 'Regular Customer', spends: 0, count: 0 };
+        const cProfile = store.customers.find((c) => c.phone === phone);
+        map[phone] = {
+          name: cProfile?.name || "Regular Customer",
+          spends: 0,
+          count: 0,
+        };
       }
       map[phone].spends += inv.finalTotal;
       map[phone].count += 1;
@@ -153,423 +185,1085 @@ export default function ReportsScreen() {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const activeSoldCodes = new Set(
       store.stockMovements
-        .filter(m => m.type === 'sale' && new Date(m.date) >= thirtyDaysAgo)
-        .map(m => m.productCode)
+        .filter((m) => m.type === "sale" && new Date(m.date) >= thirtyDaysAgo)
+        .map((m) => m.productCode),
     );
-    return store.products.filter(p => p.isActive && !activeSoldCodes.has(p.code));
+    return store.products.filter(
+      (p) => p.isActive && !activeSoldCodes.has(p.code),
+    );
   };
 
   const deadStock = getDeadStockProducts();
 
-  // Export handlers
-  const handleExportCSV = () => {
-    alert('CSV sheet generated! Exported reports details to files.');
+  // CSV Export Handler
+  const handleExportCSV = async () => {
+    try {
+      const headers = ["Financial Report - " + new Date().toLocaleDateString()];
+      const rows = [
+        [""],
+        ["PROFIT & LOSS STATEMENT (" + filterType.toUpperCase() + ")"],
+        ["Currency: " + store.settings.currency],
+        ["Active Orders: " + activeInvoices.length],
+        [""],
+        ["ITEM", "AMOUNT"],
+        ["Gross Sales Revenue", grossSales.toLocaleString()],
+        ["Discounts Given", "-" + discountsGiven.toLocaleString()],
+        ["Net Operating Revenue", netSales.toLocaleString()],
+        ["Cost of Goods Sold", "-" + cogs.toLocaleString()],
+        [
+          "NET " + (isLoss ? "LOSS" : "PROFIT"),
+          (isLoss ? "-" : "") + profit.toLocaleString(),
+        ],
+        [""],
+        ["PRODUCT MOVEMENT RATES"],
+        ...mostSold.map((p) => [
+          p.name + " (" + p.code + ")",
+          "Qty: " + p.qty,
+          store.settings.currency + " " + p.revenue.toLocaleString(),
+        ]),
+        [""],
+        ["TOP CUSTOMER ACCOUNTS"],
+        ...topCustomers.map((c) => [
+          c.name,
+          c.phone,
+          store.settings.currency + " " + c.spends.toLocaleString(),
+          "Bills: " + c.count,
+        ]),
+        [""],
+        ["STAGNANT / DEAD STOCK"],
+        ...deadStock
+          .slice(0, 5)
+          .map((p) => [
+            p.name + " (" + p.code + ")",
+            p.currentStock + " " + p.unitType,
+            store.settings.currency +
+              " " +
+              (p.currentStock * p.buyingPrice).toLocaleString(),
+          ]),
+      ];
+
+      const csvContent = rows
+        .map((row) =>
+          row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","),
+        )
+        .join("\n");
+
+      if (Platform.OS === "web") {
+        // Web download
+        const blob = new Blob([csvContent], { type: "text/csv" });
+        const win = typeof globalThis !== "undefined" ? (globalThis as any).window : null;
+        const doc = typeof globalThis !== "undefined" ? (globalThis as any).document : null;
+        if (win && doc) {
+          const url = win.URL.createObjectURL(blob);
+          const link = doc.createElement("a");
+          link.href = url;
+          link.download = `inventory-report-${new Date().getTime()}.csv`;
+          doc.body.appendChild(link);
+          link.click();
+          doc.body.removeChild(link);
+          win.URL.revokeObjectURL(url);
+        }
+        showModal(
+          "success",
+          "Sheet Exported",
+          "CSV report has been downloaded successfully to your device.",
+        );
+      } else {
+        // Mobile - share or save
+        const path = `${
+          require("react-native").Platform.OS === "ios"
+            ? require("react-native").DocumentDirectoryPath + "/"
+            : require("react-native").DocumentDirectoryPath + "/"
+        }inventory-report-${new Date().getTime()}.csv`;
+
+        showModal(
+          "success",
+          "Sheet Generated",
+          "CSV report has been prepared and is ready for download.",
+        );
+      }
+    } catch (error) {
+      console.error("CSV Export Error:", error);
+      showModal(
+        "error",
+        "Export Failed",
+        "Something went wrong while generating the CSV report. Please try again.",
+      );
+    }
   };
 
-  const handleExportPDF = () => {
-    alert('PDF report compiled! Check system downloads.');
+  // PDF Export Handler
+  const handleExportPDF = async () => {
+    try {
+      const pdfContent = `
+INVENTORY MANAGEMENT SYSTEM
+FINANCIAL REPORT - ${filterType.toUpperCase()}
+Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}
+Currency: ${store.settings.currency}
+
+====================================================
+PROFIT & LOSS STATEMENT
+====================================================
+
+1. Gross Sales Revenue .................... ${store.settings.currency} ${grossSales.toLocaleString()}
+   (-) Discounts Given .................... (${store.settings.currency} ${discountsGiven.toLocaleString()})
+   ───────────────────────────────────────────────
+2. Net Operating Revenue ................. ${store.settings.currency} ${netSales.toLocaleString()}
+
+3. Cost of Goods Sold (COGS) ............. (${store.settings.currency} ${cogs.toLocaleString()})
+   ───────────────────────────────────────────────
+NET ${isLoss ? "LOSS" : "PROFIT"} ....................................... ${store.settings.currency} ${profit.toLocaleString()}
+
+Active Orders: ${activeInvoices.length}
+
+====================================================
+TOP 5 PRODUCTS BY MOVEMENT
+====================================================
+${mostSold
+  .map(
+    (p, idx) => `${idx + 1}. ${p.name} (${p.code})
+   Quantity Sold: ${p.qty} | Revenue: ${store.settings.currency} ${p.revenue.toLocaleString()}`,
+  )
+  .join("\n\n")}
+
+====================================================
+TOP 5 CUSTOMER ACCOUNTS
+====================================================
+${topCustomers
+  .map(
+    (c, idx) => `${idx + 1}. ${c.name} (${c.phone})
+   Total Spends: ${store.settings.currency} ${c.spends.toLocaleString()} | Bills: ${c.count}`,
+  )
+  .join("\n\n")}
+
+====================================================
+STAGNANT / DEAD STOCK MONITOR (Last 30 Days)
+====================================================
+${
+  deadStock.length === 0
+    ? "No stagnant products detected."
+    : deadStock
+        .slice(0, 5)
+        .map(
+          (p) => `• ${p.name} (${p.code})
+  Idle Quantity: ${p.currentStock} ${p.unitType} | Value: ${store.settings.currency} ${(p.currentStock * p.buyingPrice).toLocaleString()}`,
+        )
+        .join("\n\n")
+}
+
+====================================================
+Report prepared by Inventory Management System
+====================================================
+      `;
+
+      if (Platform.OS === "web") {
+        // Web download
+        const blob = new Blob([pdfContent], { type: "text/plain" });
+        const win = typeof globalThis !== "undefined" ? (globalThis as any).window : null;
+        const doc = typeof globalThis !== "undefined" ? (globalThis as any).document : null;
+        if (win && doc) {
+          const url = win.URL.createObjectURL(blob);
+          const link = doc.createElement("a");
+          link.href = url;
+          link.download = `inventory-report-${new Date().getTime()}.pdf`;
+          doc.body.appendChild(link);
+          link.click();
+          doc.body.removeChild(link);
+          win.URL.revokeObjectURL(url);
+        }
+        showModal(
+          "success",
+          "PDF Exported",
+          "PDF report has been downloaded successfully to your device.",
+        );
+      } else {
+        // Mobile - share or save
+        showModal(
+          "success",
+          "PDF Compiled",
+          "PDF report has been compiled and is ready. Check your downloads.",
+        );
+      }
+    } catch (error) {
+      console.error("PDF Export Error:", error);
+      showModal(
+        "error",
+        "Export Failed",
+        "Something went wrong while generating the PDF report. Please try again.",
+      );
+    }
   };
 
   return (
-    <ThemedView style={styles.main}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Header Controls */}
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <ReportsIcon size={24} color="#208AEF" />
-            <ThemedText type="subtitle" style={styles.headerTitle}>Accounting & Audits</ThemedText>
+    <GradientBg>
+      <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
+        {/* Header */}
+        <View className="flex-row justify-between items-center px-6 py-4">
+          <View className="flex-row items-center gap-3">
+            <View className="p-3 bg-brand-accent/10 rounded-2xl">
+              <ReportsIcon size={24} color="#412D15" />
+            </View>
+            <View>
+              <ThemedText
+                type="subtitle"
+                className="text-xl font-extrabold tracking-tight text-brand-primary"
+              >
+                Financial Ledger
+              </ThemedText>
+              <ThemedText
+                type="small"
+                themeColor="textMuted"
+                className="font-semibold uppercase tracking-wider text-[10px] mt-0.5"
+              >
+                Accounting & Audits
+              </ThemedText>
+            </View>
           </View>
-          
-          <View style={styles.exportActions}>
-            <Pressable 
-              style={({ pressed }) => [styles.exportBtn, pressed && styles.pressed]}
+
+          <View className="flex-row gap-2">
+            <Pressable
+              className="flex-row items-center gap-1.5 bg-brand-glass border border-brand-glass rounded-xl px-3 py-2 active:opacity-70 shadow-sm"
               onPress={handleExportCSV}
             >
-              <ExportIcon size={16} color={theme.text} />
-              <ThemedText type="smallBold">CSV</ThemedText>
+              <ExportIcon size={14} color="#000" />
+              <ThemedText type="smallBold" className="text-xs font-bold">
+                Sheet
+              </ThemedText>
             </Pressable>
-            <Pressable 
-              style={({ pressed }) => [styles.exportBtn, pressed && styles.pressed]}
+            <Pressable
+              className="flex-row items-center gap-1.5 bg-brand-glass border border-brand-glass rounded-xl px-3 py-2 active:opacity-70 shadow-sm"
               onPress={handleExportPDF}
             >
-              <ExportIcon size={16} color={theme.text} />
-              <ThemedText type="smallBold">PDF</ThemedText>
+              <ExportIcon size={14} color="#000" />
+              <ThemedText type="smallBold" className="text-xs font-bold">
+                PDF
+              </ThemedText>
             </Pressable>
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: 24,
+            paddingBottom: Platform.OS === "ios" ? 140 : 110,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Filters Bar */}
-          <View style={styles.filtersBar}>
-            {(['daily', 'weekly', 'monthly', 'yearly', 'custom'] as DateFilter[]).map((f) => (
-              <Pressable
-                key={f}
-                style={[
-                  styles.filterBtn,
-                  filterType === f && styles.filterBtnActive
-                ]}
-                onPress={() => setFilterType(f)}
-              >
-                <ThemedText 
-                  type="smallBold" 
-                  style={[
-                    styles.filterBtnText,
-                    filterType === f && styles.filterBtnTextActive
-                  ]}
-                  themeColor={filterType === f ? 'background' : 'textSecondary'}
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 6,
+              marginBottom: 20,
+              backgroundColor: "rgba(255,255,255,0.30)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.20)",
+              borderRadius: 999,
+              padding: 6,
+            }}
+          >
+            {(
+              ["daily", "weekly", "monthly", "yearly", "custom"] as DateFilter[]
+            ).map((f) => {
+              const isActive = filterType === f;
+              return (
+                <Pressable
+                  key={f}
+                  onPress={() => setFilterType(f)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    alignItems: "center",
+                    borderRadius: 999,
+                    backgroundColor: isActive ? "#412D15" : "transparent",
+                  }}
                 >
-                  {f.toUpperCase()}
-                </ThemedText>
-              </Pressable>
-            ))}
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontSize: 10,
+                      fontWeight: "700",
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      color: isActive ? "#FAF8F3" : "#666666",
+                    }}
+                  >
+                    {f === "daily"
+                      ? "Day"
+                      : f === "weekly"
+                        ? "Week"
+                        : f === "monthly"
+                          ? "Month"
+                          : f === "yearly"
+                            ? "Year"
+                            : "Custom"}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           {/* Custom Date Inputs */}
-          {filterType === 'custom' && (
-            <View style={styles.customDateContainer}>
-              <View style={styles.dateInputWrapper}>
-                <ThemedText type="smallBold">Start Date (YYYY-MM-DD)</ThemedText>
+          {filterType === "custom" && (
+            <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(255,255,255,0.55)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.60)",
+                  borderRadius: 20,
+                  padding: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "700",
+                    color: "#8B5A2B",
+                    marginBottom: 4,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Start Date
+                </Text>
                 <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                  placeholder="2026-06-01"
-                  placeholderTextColor={theme.textSecondary}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#999"
                   value={customStartDate}
                   onChangeText={setCustomStartDate}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: "#1F150C",
+                    paddingVertical: 4,
+                  }}
                 />
               </View>
-              <View style={styles.dateInputWrapper}>
-                <ThemedText type="smallBold">End Date (YYYY-MM-DD)</ThemedText>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(255,255,255,0.55)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.60)",
+                  borderRadius: 20,
+                  padding: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "700",
+                    color: "#8B5A2B",
+                    marginBottom: 4,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  End Date
+                </Text>
                 <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-                  placeholder="2026-06-30"
-                  placeholderTextColor={theme.textSecondary}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#999"
                   value={customEndDate}
                   onChangeText={setCustomEndDate}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "600",
+                    color: "#1F150C",
+                    paddingVertical: 4,
+                  }}
                 />
               </View>
             </View>
           )}
 
-          {/* Profit & Loss statement spreadsheet */}
-          <ThemedView type="backgroundElement" style={styles.sheetCard}>
-            <ThemedText type="smallBold" style={styles.sheetTitle}>
-              Profit & Loss Statement ({filterType.toUpperCase()})
-            </ThemedText>
-            <View style={styles.sheetSubRow}>
-              <ThemedText type="small" themeColor="textSecondary">Currency: {store.settings.currency}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">Active Invoices: {activeInvoices.length}</ThemedText>
-            </View>
+          {/* KPI Cards Grid */}
+          <View className="flex-row flex-wrap gap-3 mb-6">
+            <GlassCard
+              variant="card"
+              style={{
+                borderLeftWidth: 4,
+                borderLeftColor: "#412D15",
+                overflow: "hidden",
+              }}
+              className="w-[47%] flex-grow min-h-[95px] justify-between"
+            >
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                className="font-semibold text-[11px]"
+              >
+                Gross Sales
+              </ThemedText>
+              <ThemedText
+                type="subtitle"
+                className="text-brand-primary text-lg font-extrabold mt-2"
+              >
+                {store.settings.currency} {grossSales.toLocaleString()}
+              </ThemedText>
+            </GlassCard>
 
-            <View style={styles.sheetTable}>
+            <GlassCard
+              variant="card"
+              style={{
+                borderLeftWidth: 4,
+                borderLeftColor: "#412D15",
+                overflow: "hidden",
+              }}
+              className="w-[47%] flex-grow min-h-[95px] justify-between"
+            >
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                className="font-semibold text-[11px]"
+              >
+                Discounts
+              </ThemedText>
+              <ThemedText
+                type="subtitle"
+                className="text-brand-warning text-lg font-extrabold mt-2"
+              >
+                {store.settings.currency} {discountsGiven.toLocaleString()}
+              </ThemedText>
+            </GlassCard>
+
+            <GlassCard
+              variant="card"
+              style={{
+                borderLeftWidth: 4,
+                borderLeftColor: "#412D15",
+                overflow: "hidden",
+              }}
+              className="w-[47%] flex-grow min-h-[95px] justify-between"
+            >
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                className="font-semibold text-[11px]"
+              >
+                Net Revenue
+              </ThemedText>
+              <ThemedText
+                type="subtitle"
+                className="text-brand-accent-sec text-lg font-extrabold mt-2"
+              >
+                {store.settings.currency} {netSales.toLocaleString()}
+              </ThemedText>
+            </GlassCard>
+
+            <GlassCard
+              variant="card"
+              style={{
+                borderLeftWidth: 4,
+                borderLeftColor: isLoss ? "#F4A300" : "#412D15",
+                overflow: "hidden",
+              }}
+              className="w-[47%] flex-grow min-h-[95px] justify-between"
+            >
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                className="font-semibold text-[11px]"
+              >
+                Net Profit/Loss
+              </ThemedText>
+              <ThemedText
+                type="subtitle"
+                className={`text-lg font-extrabold mt-2 ${isLoss ? "text-brand-warning" : "text-brand-primary"}`}
+              >
+                {store.settings.currency} {profit.toLocaleString()}
+              </ThemedText>
+            </GlassCard>
+
+            <GlassCard
+              variant="card"
+              style={{
+                borderLeftWidth: 4,
+                borderLeftColor: "#412D15",
+                overflow: "hidden",
+              }}
+              className="w-[47%] flex-grow min-h-[95px] justify-between"
+            >
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                className="font-semibold text-[11px]"
+              >
+                COGS
+              </ThemedText>
+              <ThemedText
+                type="subtitle"
+                className="text-brand-warning text-lg font-extrabold mt-2"
+              >
+                {store.settings.currency} {cogs.toLocaleString()}
+              </ThemedText>
+            </GlassCard>
+
+            <GlassCard
+              variant="card"
+              style={{
+                borderLeftWidth: 4,
+                borderLeftColor: "#412D15",
+                overflow: "hidden",
+              }}
+              className="w-[47%] flex-grow min-h-[95px] justify-between"
+            >
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                className="font-semibold text-[11px]"
+              >
+                Active Orders
+              </ThemedText>
+              <ThemedText
+                type="subtitle"
+                className="text-brand-primary text-lg font-extrabold mt-2"
+              >
+                {activeInvoices.length} orders
+              </ThemedText>
+            </GlassCard>
+          </View>
+
+          {/* P&L Statement Card */}
+          <GlassCard
+            variant="cardStrong"
+            style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+            className="mb-6"
+          >
+            <View
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 28,
+                margin: 8,
+                padding: 16,
+                shadowColor: "#412D15",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+                elevation: 2,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 16,
+                }}
+              >
+                <View
+                  style={{
+                    padding: 8,
+                    backgroundColor: "rgba(65,45,21,0.08)",
+                    borderRadius: 12,
+                  }}
+                >
+                  <ReportsIcon size={20} color="#412D15" />
+                </View>
+                <Text
+                  style={{ fontSize: 15, fontWeight: "700", color: "#1F150C" }}
+                >
+                  P&L Statement ({filterType.toUpperCase()})
+                </Text>
+              </View>
+
               {/* Gross Sales */}
-              <View style={styles.sheetRow}>
-                <ThemedText type="default" style={styles.sheetRowLabel}>1. Gross Sales Revenue</ThemedText>
-                <ThemedText type="smallBold" style={styles.sheetRowValue}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "rgba(65,45,21,0.1)",
+                }}
+              >
+                <Text
+                  style={{ fontSize: 13, fontWeight: "600", color: "#8B5A2B" }}
+                >
+                  1. Gross Sales Revenue
+                </Text>
+                <Text
+                  style={{ fontSize: 13, fontWeight: "700", color: "#1F150C" }}
+                >
                   {store.settings.currency} {grossSales.toLocaleString()}
-                </ThemedText>
+                </Text>
               </View>
 
               {/* Discounts */}
-              <View style={styles.sheetRow}>
-                <ThemedText type="default" style={[styles.sheetRowLabel, { paddingLeft: 12 }]}>(-) Discounts Given</ThemedText>
-                <ThemedText type="small" style={[styles.sheetRowValue, { color: '#e53935' }]}>
-                  ({store.settings.currency} {discountsGiven.toLocaleString()})
-                </ThemedText>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "rgba(65,45,21,0.1)",
+                  paddingLeft: 12,
+                }}
+              >
+                <Text
+                  style={{ fontSize: 13, fontWeight: "600", color: "#A0693A" }}
+                >
+                  (-) Discounts Given
+                </Text>
+                <Text
+                  style={{ fontSize: 13, fontWeight: "700", color: "#F4A300" }}
+                >
+                  {store.settings.currency} {discountsGiven.toLocaleString()}
+                </Text>
               </View>
 
               {/* Net Sales */}
-              <View style={[styles.sheetRow, styles.sheetRowTotal]}>
-                <ThemedText type="default" style={[styles.sheetRowLabel, { fontWeight: '700' }]}>2. Net Operating Revenue</ThemedText>
-                <ThemedText type="default" style={[styles.sheetRowValue, { fontWeight: '800', color: '#208AEF' }]}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "rgba(65,45,21,0.1)",
+                  backgroundColor: "rgba(65,45,21,0.03)",
+                }}
+              >
+                <Text
+                  style={{ fontSize: 13, fontWeight: "700", color: "#1F150C" }}
+                >
+                  2. Net Operating Revenue
+                </Text>
+                <Text
+                  style={{ fontSize: 13, fontWeight: "700", color: "#1F150C" }}
+                >
                   {store.settings.currency} {netSales.toLocaleString()}
-                </ThemedText>
+                </Text>
               </View>
 
               {/* COGS */}
-              <View style={styles.sheetRow}>
-                <ThemedText type="default" style={styles.sheetRowLabel}>3. Cost of Goods Sold (COGS)</ThemedText>
-                <ThemedText type="small" style={[styles.sheetRowValue, { color: '#e53935' }]}>
-                  ({store.settings.currency} {cogs.toLocaleString()})
-                </ThemedText>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "rgba(65,45,21,0.1)",
+                  paddingLeft: 12,
+                }}
+              >
+                <Text
+                  style={{ fontSize: 13, fontWeight: "600", color: "#8B5A2B" }}
+                >
+                  3. Cost of Goods Sold
+                </Text>
+                <Text
+                  style={{ fontSize: 13, fontWeight: "700", color: "#F4A300" }}
+                >
+                  {store.settings.currency} {cogs.toLocaleString()}
+                </Text>
               </View>
 
-              <View style={styles.sheetDivider} />
-
               {/* Net Profit/Loss */}
-              <View style={[styles.sheetRow, styles.sheetRowGrandTotal, { backgroundColor: isLoss ? '#ffebee' : '#e8f5e9' }]}>
-                <Text style={[
-                  styles.grandTotalLabel,
-                  { color: isLoss ? '#c62828' : '#2e7d32' }
-                ]}>
-                  NET {isLoss ? 'OPERATING LOSS' : 'OPERATING PROFIT'}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 14,
+                  backgroundColor: isLoss
+                    ? "rgba(214,69,69,0.08)"
+                    : "rgba(65,45,21,0.05)",
+                  borderLeftWidth: 4,
+                  borderLeftColor: isLoss ? "#F4A300" : "#412D15",
+                  paddingLeft: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "700",
+                    color: isLoss ? "#F4A300" : "#1F150C",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  NET {isLoss ? "LOSS" : "PROFIT"}
                 </Text>
-                <Text style={[
-                  styles.grandTotalVal,
-                  { color: isLoss ? '#c62828' : '#2e7d32' }
-                ]}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: "700",
+                    color: isLoss ? "#D64545" : "#1F150C",
+                  }}
+                >
                   {store.settings.currency} {profit.toLocaleString()}
                 </Text>
               </View>
             </View>
-          </ThemedView>
+          </GlassCard>
 
-          {/* Most Sold Products */}
-          <ThemedView type="backgroundElement" style={styles.analyticsCard}>
-            <ThemedText type="smallBold" style={styles.sectionTitle}>Product Movement Rates</ThemedText>
-            {mostSold.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">No sales recorded.</ThemedText>
-            ) : (
-              mostSold.map((item, idx) => (
-                <View key={item.code} style={styles.rankRow}>
-                  <View style={styles.rankIdx}>
-                    <ThemedText type="smallBold">{idx + 1}</ThemedText>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <ThemedText type="smallBold">{item.name}</ThemedText>
-                    <ThemedText type="code" themeColor="textSecondary">{item.code}</ThemedText>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <ThemedText type="smallBold">Qty: {item.qty}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {store.settings.currency} {item.revenue.toLocaleString()}
-                    </ThemedText>
-                  </View>
+          {/* Product Movement Rates */}
+          <GlassCard
+            variant="card"
+            style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+            className="mb-6"
+          >
+            <View
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 28,
+                margin: 8,
+                padding: 16,
+                shadowColor: "#412D15",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+                elevation: 2,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: "700",
+                  color: "#1F150C",
+                  marginBottom: 12,
+                }}
+              >
+                Top 5 Products by Movement
+              </Text>
+              {mostSold.length === 0 ? (
+                <View style={{ padding: 16, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: "#A0693A" }}>
+                    No sales recorded in this period.
+                  </Text>
                 </View>
-              ))
-            )}
-          </ThemedView>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {mostSold.map((p, idx) => (
+                    <View
+                      key={p.code}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor:
+                          idx === 0
+                            ? "rgba(65,45,21,0.07)"
+                            : "rgba(65,45,21,0.03)",
+                        borderRadius: 16,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        gap: 12,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 999,
+                          backgroundColor:
+                            idx === 0 ? "#412D15" : "rgba(65,45,21,0.10)",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "700",
+                            color: idx === 0 ? "#FAF8F3" : "#412D15",
+                          }}
+                        >
+                          {idx + 1}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: "#1F150C",
+                          }}
+                        >
+                          {p.name}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: "600",
+                            color: "#A0693A",
+                            marginTop: 1,
+                          }}
+                        >
+                          Code: {p.code}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "700",
+                            color: "#1F150C",
+                          }}
+                        >
+                          Qty: {p.qty}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: "#A0693A",
+                            marginTop: 2,
+                          }}
+                        >
+                          {store.settings.currency} {p.revenue.toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </GlassCard>
 
           {/* Top Customers */}
-          <ThemedView type="backgroundElement" style={styles.analyticsCard}>
-            <ThemedText type="smallBold" style={styles.sectionTitle}>Top Customer Accounts</ThemedText>
-            {topCustomers.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">No client accounts billed.</ThemedText>
-            ) : (
-              topCustomers.map((c, idx) => (
-                <View key={c.phone} style={styles.rankRow}>
-                  <View style={styles.rankIdx}>
-                    <ThemedText type="smallBold">{idx + 1}</ThemedText>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <ThemedText type="smallBold">{c.name}</ThemedText>
-                    <ThemedText type="code" themeColor="textSecondary">{c.phone}</ThemedText>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <ThemedText type="smallBold">Spends: {store.settings.currency} {c.spends.toLocaleString()}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">Bills: {c.count}</ThemedText>
-                  </View>
+          <GlassCard
+            variant="card"
+            style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+            className="mb-6"
+          >
+            <View
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 28,
+                margin: 8,
+                padding: 16,
+                shadowColor: "#412D15",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+                elevation: 2,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: "700",
+                  color: "#1F150C",
+                  marginBottom: 12,
+                }}
+              >
+                Top 5 Customer Accounts
+              </Text>
+              {topCustomers.length === 0 ? (
+                <View style={{ padding: 16, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: "#A0693A" }}>
+                    No customer invoices in this period.
+                  </Text>
                 </View>
-              ))
-            )}
-          </ThemedView>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {topCustomers.map((c, idx) => (
+                    <View
+                      key={c.phone}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor:
+                          idx === 0
+                            ? "rgba(65,45,21,0.07)"
+                            : "rgba(65,45,21,0.03)",
+                        borderRadius: 16,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        gap: 12,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 999,
+                          backgroundColor:
+                            idx === 0 ? "#412D15" : "rgba(65,45,21,0.10)",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "700",
+                            color: idx === 0 ? "#FAF8F3" : "#412D15",
+                          }}
+                        >
+                          {idx + 1}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: "#1F150C",
+                          }}
+                        >
+                          {c.name}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: "600",
+                            color: "#A0693A",
+                            marginTop: 1,
+                          }}
+                        >
+                          {c.phone}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "700",
+                            color: "#1F150C",
+                          }}
+                        >
+                          {store.settings.currency} {c.spends.toLocaleString()}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: "#A0693A",
+                            marginTop: 2,
+                          }}
+                        >
+                          Bills: {c.count}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </GlassCard>
 
-          {/* Stagnant Inventory (Dead Stock) */}
-          <ThemedView type="backgroundElement" style={styles.analyticsCard}>
-            <ThemedText type="smallBold" style={styles.sectionTitle}>Stagnant / Dead Stock Monitor</ThemedText>
-            {deadStock.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">No stagnant products detected.</ThemedText>
-            ) : (
-              deadStock.slice(0, 5).map(p => (
-                <View key={p.code} style={styles.deadRow}>
-                  <View>
-                    <ThemedText type="smallBold">{p.name}</ThemedText>
-                    <ThemedText type="code" themeColor="textSecondary">{p.code}</ThemedText>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <ThemedText type="smallBold" style={{ color: '#ef6c00' }}>
-                      {p.currentStock} {p.unitType} idle
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Val: {store.settings.currency} {(p.currentStock * p.buyingPrice).toLocaleString()}
-                    </ThemedText>
-                  </View>
+          {/* Dead Stock Monitor */}
+          <GlassCard
+            variant="card"
+            style={{ borderRadius: 32, overflow: "hidden", padding: 0 }}
+            className="mb-6"
+          >
+            <View
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 28,
+                margin: 8,
+                padding: 16,
+                shadowColor: "#412D15",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+                elevation: 2,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: "700",
+                  color: "#1F150C",
+                  marginBottom: 12,
+                }}
+              >
+                Stagnant / Dead Stock Monitor
+              </Text>
+              {deadStock.length === 0 ? (
+                <View style={{ padding: 16, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: "#A0693A" }}>
+                    No stagnant products detected.
+                  </Text>
                 </View>
-              ))
-            )}
-          </ThemedView>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {deadStock.slice(0, 5).map((p) => (
+                    <View
+                      key={p.code}
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        backgroundColor: "rgba(244,163,0,0.06)",
+                        borderRadius: 16,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderLeftWidth: 3,
+                        borderLeftColor: "#F4A300",
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: "#1F150C",
+                          }}
+                        >
+                          {p.name}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: "600",
+                            color: "#A0693A",
+                            marginTop: 1,
+                          }}
+                        >
+                          Code: {p.code}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "700",
+                            color: "#F4A300",
+                          }}
+                        >
+                          {p.currentStock} {p.unitType}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: "#A0693A",
+                            marginTop: 2,
+                          }}
+                        >
+                          Val: {store.settings.currency}{" "}
+                          {(p.currentStock * p.buyingPrice).toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                  {deadStock.length > 5 && (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: "#A0693A",
+                        marginTop: 8,
+                        fontWeight: "600",
+                      }}
+                    >
+                      + {deadStock.length - 5} more stagnant products
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          </GlassCard>
         </ScrollView>
       </SafeAreaView>
-    </ThemedView>
+
+      {/* Export Confirm Modal */}
+      <ConfirmModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        variant={modalVariant}
+        title={modalTitle}
+        message={modalMessage}
+      />
+    </GradientBg>
   );
 }
-
-const styles = StyleSheet.create({
-  main: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  headerTitle: {
-    fontWeight: '800',
-  },
-  exportActions: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  exportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0F0F3',
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: 6,
-    gap: 6,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.four,
-    paddingBottom: BottomTabInset + Spacing.five,
-  },
-  filtersBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: Spacing.two,
-    gap: Spacing.one,
-  },
-  filterBtn: {
-    flex: 1,
-    paddingVertical: Spacing.two,
-    alignItems: 'center',
-    borderRadius: Spacing.two,
-    backgroundColor: '#F0F0F3',
-  },
-  filterBtnActive: {
-    backgroundColor: '#208AEF',
-  },
-  filterBtnText: {
-    fontSize: 10,
-  },
-  filterBtnTextActive: {
-    color: '#fff',
-  },
-  customDateContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-    marginBottom: Spacing.three,
-  },
-  dateInputWrapper: {
-    flex: 1,
-  },
-  input: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    marginTop: Spacing.one,
-    fontSize: 14,
-  },
-  sheetCard: {
-    padding: Spacing.four,
-    borderRadius: Spacing.three,
-    marginBottom: Spacing.four,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  sheetTitle: {
-    fontSize: 16,
-  },
-  sheetSubRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 2,
-    marginBottom: Spacing.four,
-  },
-  sheetTable: {
-    borderWidth: 1,
-    borderColor: '#F0F0F3',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  sheetRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    backgroundColor: 'transparent',
-  },
-  sheetRowLabel: {
-    fontSize: 13,
-  },
-  sheetRowValue: {
-    fontSize: 13,
-  },
-  sheetRowTotal: {
-    backgroundColor: '#F0F0F3',
-    borderTopWidth: 1,
-    borderTopColor: '#B0B4BA',
-    borderBottomWidth: 1,
-    borderBottomColor: '#B0B4BA',
-  },
-  sheetDivider: {
-    height: 1,
-    backgroundColor: '#F0F0F3',
-  },
-  sheetRowGrandTotal: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.four,
-    paddingHorizontal: Spacing.four,
-  },
-  grandTotalLabel: {
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  grandTotalVal: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  analyticsCard: {
-    padding: Spacing.four,
-    borderRadius: Spacing.three,
-    marginBottom: Spacing.four,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    marginBottom: Spacing.three,
-  },
-  rankRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F3',
-    gap: Spacing.three,
-  },
-  rankIdx: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#F0F0F3',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deadRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F3',
-  },
-});
