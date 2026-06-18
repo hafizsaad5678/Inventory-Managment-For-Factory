@@ -10,6 +10,7 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { GlassCard } from "../components/glass-card";
 import { GradientBg } from "../components/gradient-bg";
 import {
@@ -369,32 +370,33 @@ export default function DashboardScreen() {
             </Text>
             <Text
               style={{
-                fontSize: 20,
-                fontWeight: "800",
+                fontSize: 24,
+                fontWeight: "900",
                 color: "#1F150C",
                 marginTop: 2,
+                letterSpacing: -0.5,
               }}
             >
-              {currency}{" "}
+              <Text style={{ fontSize: 16, color: "#8B5A2B", fontWeight: "700" }}>{currency}</Text>{" "}
               {data.reduce((s, d) => s + d.value, 0).toLocaleString()}
             </Text>
           </View>
-          <View style={{ alignItems: "flex-end" }}>
+          <View style={{ alignItems: "flex-end", backgroundColor: "rgba(65,45,21,0.05)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
             <Text
               style={{
-                fontSize: 10,
-                fontWeight: "700",
+                fontSize: 9,
+                fontWeight: "800",
                 color: "#A0693A",
                 textTransform: "uppercase",
-                letterSpacing: 0.5,
+                letterSpacing: 0.8,
               }}
             >
               Peak
             </Text>
             <Text
               style={{
-                fontSize: 14,
-                fontWeight: "700",
+                fontSize: 15,
+                fontWeight: "800",
                 color: "#412D15",
                 marginTop: 2,
               }}
@@ -481,17 +483,22 @@ export default function DashboardScreen() {
                       {Math.round(item.value).toLocaleString()}
                     </Text>
                     {/* Bar */}
-                    <View
+                    <LinearGradient
+                      colors={isMax ? ["#412D15", "#8B5A2B"] : ["rgba(65,45,21,0.5)", "rgba(65,45,21,0.15)"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0, y: 1 }}
                       style={{
                         width: "100%",
                         height: `${pct}%`,
-                        backgroundColor: isMax
-                          ? "#412D15"
-                          : "rgba(65,45,21,0.30)",
                         borderTopLeftRadius: 8,
                         borderTopRightRadius: 8,
                         borderBottomLeftRadius: 3,
                         borderBottomRightRadius: 3,
+                        shadowColor: isMax ? "#412D15" : "transparent",
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: isMax ? 0.35 : 0,
+                        shadowRadius: 6,
+                        elevation: isMax ? 5 : 0,
                       }}
                     />
                   </View>
