@@ -8,6 +8,9 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+import * as Print from "expo-print";
 import { ConfirmModal, ConfirmModalVariant } from "../components/confirm-modal";
 import { GlassCard } from "../components/glass-card";
 import { GradientBg } from "../components/gradient-bg";
@@ -270,17 +273,18 @@ export default function ReportsScreen() {
         );
       } else {
         // Mobile - share or save
-        const path = `${
-          require("react-native").Platform.OS === "ios"
-            ? require("react-native").DocumentDirectoryPath + "/"
-            : require("react-native").DocumentDirectoryPath + "/"
-        }inventory-report-${new Date().getTime()}.csv`;
-
-        showModal(
-          "success",
-          "Sheet Generated",
-          "CSV report has been prepared and is ready for download.",
-        );
+        const path = `${FileSystem.documentDirectory || ""}inventory-report-${new Date().getTime()}.csv`;
+        await FileSystem.writeAsStringAsync(path, csvContent);
+        
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(path);
+        } else {
+          showModal(
+            "success",
+            "Sheet Generated",
+            "CSV report has been prepared and is ready at " + path,
+          );
+        }
       }
     } catch (error) {
       console.error("CSV Export Error:", error);
@@ -356,20 +360,24 @@ Report prepared by Inventory Management System
 ====================================================
       `;
 
+      const htmlContent = `
+        <html>
+          <body style="font-family: monospace; white-space: pre;">${pdfContent.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body>
+        </html>
+      `;
+
       if (Platform.OS === "web") {
         // Web download
-        const blob = new Blob([pdfContent], { type: "text/plain" });
+        const { uri } = await Print.printToFileAsync({ html: htmlContent });
         const win = typeof globalThis !== "undefined" ? (globalThis as any).window : null;
         const doc = typeof globalThis !== "undefined" ? (globalThis as any).document : null;
         if (win && doc) {
-          const url = win.URL.createObjectURL(blob);
           const link = doc.createElement("a");
-          link.href = url;
+          link.href = uri;
           link.download = `inventory-report-${new Date().getTime()}.pdf`;
           doc.body.appendChild(link);
           link.click();
           doc.body.removeChild(link);
-          win.URL.revokeObjectURL(url);
         }
         showModal(
           "success",
@@ -378,11 +386,16 @@ Report prepared by Inventory Management System
         );
       } else {
         // Mobile - share or save
-        showModal(
-          "success",
-          "PDF Compiled",
-          "PDF report has been compiled and is ready. Check your downloads.",
-        );
+        const { uri } = await Print.printToFileAsync({ html: htmlContent });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri);
+        } else {
+          showModal(
+            "success",
+            "PDF Compiled",
+            "PDF report has been compiled and is ready at " + uri,
+          );
+        }
       }
     } catch (error) {
       console.error("PDF Export Error:", error);
